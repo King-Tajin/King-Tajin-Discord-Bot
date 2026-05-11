@@ -12,8 +12,8 @@ from bot.config import Config
 
 logger = logging.getLogger(__name__)
 
-STATS_INTERVAL = 10
-LOG_INTERVAL = 30
+STATS_INTERVAL = 25
+LOG_INTERVAL = 120
 
 _last_log_fetch = None
 

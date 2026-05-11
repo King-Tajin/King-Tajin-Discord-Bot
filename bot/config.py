@@ -9,6 +9,8 @@ class Config:
     CLOUDFLARE_NAMESPACE_ID = os.getenv('CLOUDFLARE_NAMESPACE_ID')
     CLOUDFLARE_API_TOKEN = os.getenv('CLOUDFLARE_API_TOKEN')
     STATS_CHANNEL_ID = int(os.getenv('STATS_CHANNEL_ID', 0)) or None
+    FEEDBACK_CHANNEL_ID = int(os.getenv('FEEDBACK_CHANNEL_ID', 0)) or None
+    SUPPORT_ROLE_ID = int(os.getenv('SUPPORT_ROLE_ID', 0)) or None
     GUILD_ID = int(os.getenv('GUILD_ID', 0)) or None
     CURSEFORGE_API_KEY = os.getenv('CURSEFORGE_API_KEY')
     CURSEFORGE_AUTHOR_ID = os.getenv('CURSEFORGE_AUTHOR_ID')

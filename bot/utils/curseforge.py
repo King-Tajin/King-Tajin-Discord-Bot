@@ -3,7 +3,7 @@ import traceback
 import datetime
 import asyncio
 import aiohttp
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, ViewportSize
 from bot.config import Config
 
 BLOCKED_RESOURCES = {'image', 'stylesheet', 'font', 'media', 'other'}
@@ -46,7 +46,7 @@ async def get_curseforge_followers(username: str) -> int:
             )
 
             context = await browser.new_context(
-                viewport={'width': 800, 'height': 600},
+                viewport=ViewportSize(width=800, height=600),
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 java_script_enabled=True,
             )

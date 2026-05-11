@@ -4,6 +4,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, X-Push-Secret, Authorization",
 };
 
+// noinspection JSUnusedGlobalSymbols
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);

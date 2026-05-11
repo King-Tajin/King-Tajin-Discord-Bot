@@ -3,12 +3,12 @@ from discord.ext import commands, tasks
 from discord import app_commands
 from typing import Optional
 import logging
-from datetime import time
+from datetime import time, datetime, timezone
 import aiohttp
 from bot.config import Config
 from bot.utils.cloudflare import CloudflareKV
 from bot.utils.embeds import create_feedback_embed, create_feedback_list_embed, create_stats_embed, \
-    create_curseforge_embed, create_modrinth_embed
+    create_curseforge_embed, create_modrinth_embed, create_new_feedback_embed
 from bot.utils.curseforge import get_curseforge_stats
 from bot.utils.modrinth import get_modrinth_stats
 from bot.utils.dm_responses import analyze_message, get_text_response, get_emoji_response, get_gif_response, \
@@ -70,6 +70,7 @@ class FeedbackBot(commands.Bot):
 
         self.update_curseforge_stats.start()
         self.update_modrinth_stats.start()
+        self.check_new_feedback.start()
 
     async def close(self):
         if self.http_session:
@@ -79,6 +80,46 @@ class FeedbackBot(commands.Bot):
     async def cog_unload(self):
         self.update_curseforge_stats.cancel()
         self.update_modrinth_stats.cancel()
+        self.check_new_feedback.cancel()
+
+    @tasks.loop(time=[time(hour=h, minute=15) for h in range(0, 24, 2)])
+    async def check_new_feedback(self):
+        try:
+            if not Config.FEEDBACK_CHANNEL_ID or not Config.SUPPORT_ROLE_ID:
+                return
+
+            channel = self.get_channel(int(Config.FEEDBACK_CHANNEL_ID))
+            if not isinstance(channel, discord.TextChannel):
+                logger.error(f"Feedback channel {Config.FEEDBACK_CHANNEL_ID} not found or not a text channel")
+                return
+
+            since = await self.kv.get_last_feedback_check()
+            now = datetime.now(timezone.utc)
+
+            if since is None:
+                await self.kv.store_last_feedback_check(now)
+                logger.info("First feedback check run, storing baseline timestamp")
+                return
+
+            new_feedbacks = await self.kv.get_new_feedbacks_since(since)
+            await self.kv.store_last_feedback_check(now)
+
+            if not new_feedbacks:
+                logger.info("No new feedback since last check")
+                return
+
+            embed = create_new_feedback_embed(new_feedbacks)
+            role_mention = f"<@&{Config.SUPPORT_ROLE_ID}>"
+
+            await channel.send(content=role_mention, embed=embed)
+            logger.info(f"Posted {len(new_feedbacks)} new feedback entries to {channel.name}")
+
+        except Exception as e:
+            logger.error(f"Error in check_new_feedback task: {e}")
+
+    @check_new_feedback.before_loop
+    async def before_check_new_feedback(self):
+        await self.wait_until_ready()
 
     @tasks.loop(time=[time(hour=h, minute=30) for h in [0, 6, 12, 18]])
     async def update_curseforge_stats(self):

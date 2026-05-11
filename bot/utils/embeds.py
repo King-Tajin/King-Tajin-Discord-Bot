@@ -21,64 +21,28 @@ def create_feedback_embed(feedback: dict) -> discord.Embed:
     message = feedback.get('message', 'No message provided')
     embed.description = f"```{message}```"
 
-    embed.add_field(
-        name="Sentiment",
-        value=sentiment.title(),
-        inline=True
-    )
-    embed.add_field(
-        name="Category",
-        value=category.title(),
-        inline=True
-    )
-    embed.add_field(
-        name="Status",
-        value="✓ Completed" if completed else "Pending",
-        inline=True
-    )
+    embed.add_field(name="Sentiment", value=sentiment.title(), inline=True)
+    embed.add_field(name="Category", value=category.title(), inline=True)
+    embed.add_field(name="Status", value="✓ Completed" if completed else "Pending", inline=True)
 
     if feedback.get('article'):
-        embed.add_field(
-            name="Article",
-            value=feedback.get('article'),
-            inline=True
-        )
+        embed.add_field(name="Article", value=feedback.get('article'), inline=True)
 
     if feedback.get('website'):
-        embed.add_field(
-            name="Website",
-            value=feedback.get('website'),
-            inline=True
-        )
+        embed.add_field(name="Website", value=feedback.get('website'), inline=True)
 
     if feedback.get('email'):
-        embed.add_field(
-            name="Email",
-            value=feedback['email'],
-            inline=True
-        )
+        embed.add_field(name="Email", value=feedback['email'], inline=True)
 
     tags = feedback.get('tags', [])
     if tags:
         tags_str = ", ".join(f"`{tag}`" for tag in tags)
-        embed.add_field(
-            name="Tags",
-            value=tags_str,
-            inline=False
-        )
+        embed.add_field(name="Tags", value=tags_str, inline=False)
 
-    embed.add_field(
-        name="Feedback ID",
-        value=f"`{feedback.get('id', 'unknown')}`",
-        inline=False
-    )
+    embed.add_field(name="Feedback ID", value=f"`{feedback.get('id', 'unknown')}`", inline=False)
 
     if feedback.get('categoryId'):
-        embed.add_field(
-            name="Category ID",
-            value=f"`{feedback['categoryId']}`",
-            inline=True
-        )
+        embed.add_field(name="Category ID", value=f"`{feedback['categoryId']}`", inline=True)
 
     footer_text = f"IP: {feedback.get('ip', 'unknown')}"
     if feedback.get('userAgent'):
@@ -112,11 +76,10 @@ def create_feedback_list_embed(feedbacks: list) -> discord.Embed:
         try:
             dt = datetime.fromisoformat(submitted_at.replace('Z', '+00:00'))
             date_str = dt.strftime('%Y-%m-%d')
-        except:
+        except (ValueError, AttributeError):
             date_str = 'Unknown'
 
         status = "✅" if completed else "⭕"
-
         entries.append(f"{status} `{feedback_id}` - {date_str}")
 
     description = "\n".join(entries)
@@ -128,6 +91,40 @@ def create_feedback_list_embed(feedbacks: list) -> discord.Embed:
 
     embed.description = description
     embed.set_footer(text="Use /view_feedback <id> to view details | ✅ completed ⭕ pending")
+
+    return embed
+
+
+def create_new_feedback_embed(feedbacks: list) -> discord.Embed:
+    count = len(feedbacks)
+
+    embed = discord.Embed(
+        title=f"🔔 {count} New Feedback {'Entry' if count == 1 else 'Entries'}",
+        color=discord.Color.yellow(),
+        timestamp=datetime.now()
+    )
+
+    sentiment_icons = {'positive': '🟢', 'negative': '🔴', 'neutral': '🟡'}
+
+    lines = []
+    for f in feedbacks:
+        fid = f.get('id', 'unknown')
+        sentiment = f.get('sentiment', 'neutral')
+        category = f.get('category', 'uncategorized')
+        message = f.get('message', '')
+        preview = (message[:60] + '…') if len(message) > 60 else message
+        icon = sentiment_icons.get(sentiment, '⚪')
+
+        try:
+            dt = datetime.fromisoformat(f.get('submittedAt', '').replace('Z', '+00:00'))
+            time_str = dt.strftime('%H:%M UTC')
+        except (ValueError, AttributeError):
+            time_str = '??:??'
+
+        lines.append(f"{icon} `{fid}` · {category.title()} · {time_str}\n> {preview}")
+
+    embed.description = "\n\n".join(lines)
+    embed.set_footer(text="Use /view_feedback <id> for full details")
 
     return embed
 
@@ -175,24 +172,9 @@ def create_curseforge_embed(stats: dict) -> discord.Embed:
         timestamp=datetime.now()
     )
 
-    embed.add_field(
-        name="Followers",
-        value=f"**{format_number(stats['followers'])}**",
-        inline=True
-    )
-
-    embed.add_field(
-        name="Projects",
-        value=f"**{stats['project_count']}**",
-        inline=True
-    )
-
-    embed.add_field(
-        name="Total Downloads",
-        value=f"**{format_number(stats['total_downloads'])}**",
-        inline=True
-    )
-
+    embed.add_field(name="Followers", value=f"**{format_number(stats['followers'])}**", inline=True)
+    embed.add_field(name="Projects", value=f"**{stats['project_count']}**", inline=True)
+    embed.add_field(name="Total Downloads", value=f"**{format_number(stats['total_downloads'])}**", inline=True)
     embed.set_footer(text="Data from CurseForge API")
 
     return embed
@@ -208,24 +190,9 @@ def create_modrinth_embed(stats: dict) -> discord.Embed:
         timestamp=datetime.now()
     )
 
-    embed.add_field(
-        name="Followers",
-        value=f"**{format_number(stats['followers'])}**",
-        inline=True
-    )
-
-    embed.add_field(
-        name="Projects",
-        value=f"**{stats['project_count']}**",
-        inline=True
-    )
-
-    embed.add_field(
-        name="Total Downloads",
-        value=f"**{format_number(stats['total_downloads'])}**",
-        inline=True
-    )
-
+    embed.add_field(name="Followers", value=f"**{format_number(stats['followers'])}**", inline=True)
+    embed.add_field(name="Projects", value=f"**{stats['project_count']}**", inline=True)
+    embed.add_field(name="Total Downloads", value=f"**{format_number(stats['total_downloads'])}**", inline=True)
     embed.set_footer(text="Data from Modrinth API")
 
     return embed

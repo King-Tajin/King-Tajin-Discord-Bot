@@ -1,11 +1,12 @@
 import aiohttp
 import json
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from bot.config import Config
 
 
 class CloudflareKV:
-    def __init__(self, session=None):  # ← Add session parameter
+    def __init__(self, session=None):
         self.session = session
         self.account_id = Config.CLOUDFLARE_ACCOUNT_ID
         self.namespace_id = Config.CLOUDFLARE_NAMESPACE_ID
@@ -38,7 +39,7 @@ class CloudflareKV:
 
     async def list_keys(self, prefix: str = "", limit: int = 1000) -> List[Dict]:
         url = f"{self.base_url}/keys"
-        params = {"limit": limit}
+        params: dict[str, int | str] = {"limit": limit}
         if prefix:
             params['prefix'] = prefix
 
@@ -60,6 +61,33 @@ class CloudflareKV:
                 feedbacks.append(feedback)
 
         return feedbacks
+
+    async def get_last_feedback_check(self) -> Optional[datetime]:
+        data = await self.get_value('_last_feedback_check')
+        if not data or 'ts' not in data:
+            return None
+        try:
+            return datetime.fromisoformat(data['ts'])
+        except ValueError:
+            return None
+
+    async def store_last_feedback_check(self, ts: datetime) -> bool:
+        return await self.put_value('_last_feedback_check', {'ts': ts.isoformat()})
+
+    async def get_new_feedbacks_since(self, since: datetime) -> List[Dict]:
+        all_feedbacks = await self.get_all_feedbacks()
+        new = []
+        for f in all_feedbacks:
+            submitted = f.get('submittedAt', '')
+            if not submitted:
+                continue
+            try:
+                dt = datetime.fromisoformat(submitted.replace('Z', '+00:00'))
+                if dt > since:
+                    new.append(f)
+            except ValueError:
+                continue
+        return sorted(new, key=lambda x: x.get('submittedAt', ''))
 
     async def add_tag(self, key: str, tag: str) -> bool:
         feedback = await self.get_value(key)
@@ -84,21 +112,15 @@ class CloudflareKV:
         return await self.put_value(key, feedback)
 
     async def store_curseforge_stats(self, stats: Dict) -> bool:
-        from datetime import datetime, UTC
-
         stats_with_timestamp = {
             **stats,
-            'last_updated': datetime.now(UTC).isoformat()
+            'last_updated': datetime.now(timezone.utc).isoformat()
         }
-
         return await self.put_value('curseforge_stats', stats_with_timestamp)
 
     async def store_modrinth_stats(self, stats: Dict) -> bool:
-        from datetime import datetime, UTC
-
         stats_with_timestamp = {
             **stats,
-            'last_updated': datetime.now(UTC).isoformat()
+            'last_updated': datetime.now(timezone.utc).isoformat()
         }
-
         return await self.put_value('modrinth_stats', stats_with_timestamp)

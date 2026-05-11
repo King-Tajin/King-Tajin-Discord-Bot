@@ -1,0 +1,8 @@
+name = "pi-stats"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pi-stats"
+database_id = "b6b85f6c-6b4d-40ff-bc9a-180bfa91ec48"

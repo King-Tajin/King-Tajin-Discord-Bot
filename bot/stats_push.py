@@ -1,6 +1,9 @@
 import asyncio
+import json
 import logging
+import subprocess
 import time
+from datetime import datetime, timezone
 
 import aiohttp
 import psutil
@@ -9,7 +12,10 @@ from bot.config import Config
 
 logger = logging.getLogger(__name__)
 
-INTERVAL = 15
+STATS_INTERVAL = 15
+LOG_INTERVAL = 30
+
+_last_log_fetch = None
 
 
 def _cpu_temp():
@@ -27,7 +33,7 @@ def _collect(prev_net, prev_time):
     net = psutil.net_io_counters()
     now = time.monotonic()
 
-    elapsed = (now - prev_time) if prev_time else INTERVAL
+    elapsed = (now - prev_time) if prev_time else STATS_INTERVAL
     sent_bps = int((net.bytes_sent - prev_net.bytes_sent) / elapsed) if prev_net else 0
     recv_bps = int((net.bytes_recv - prev_net.bytes_recv) / elapsed) if prev_net else 0
 
@@ -46,12 +52,52 @@ def _collect(prev_net, prev_time):
     }, net, now
 
 
+def _collect_logs(since: datetime) -> list[dict]:
+    try:
+        since_str = since.strftime("%Y-%m-%d %H:%M:%S")
+        result = subprocess.run(
+            [
+                "journalctl",
+                "--since", since_str,
+                "--output", "json",
+                "--no-pager",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        entries = []
+        for line in result.stdout.splitlines():
+            try:
+                e = json.loads(line)
+                entries.append({
+                    "ts": datetime.fromtimestamp(
+                        int(e.get("__REALTIME_TIMESTAMP", 0)) / 1_000_000,
+                        tz=timezone.utc,
+                    ).isoformat(),
+                    "unit": e.get("_SYSTEMD_UNIT") or e.get("SYSLOG_IDENTIFIER"),
+                    "priority": int(e["PRIORITY"]) if "PRIORITY" in e else None,
+                    "message": e.get("MESSAGE", ""),
+                })
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return entries
+    except Exception as e:
+        logger.warning(f"log collection failed: {e}")
+        return []
+
+
 async def run_stats_push():
+    global _last_log_fetch
+
     prev_net = None
     prev_time = None
+    last_log_push = 0
 
     async with aiohttp.ClientSession() as session:
         while True:
+            now_wall = time.monotonic()
+
             try:
                 payload, prev_net, prev_time = _collect(prev_net, prev_time)
                 async with session.post(
@@ -65,4 +111,24 @@ async def run_stats_push():
             except Exception as e:
                 logger.warning(f"stats push failed: {e}")
 
-            await asyncio.sleep(INTERVAL)
+            if now_wall - last_log_push >= LOG_INTERVAL:
+                since = _last_log_fetch or datetime.now(tz=timezone.utc)
+                _last_log_fetch = datetime.now(tz=timezone.utc)
+                last_log_push = now_wall
+
+                entries = _collect_logs(since)
+                if entries:
+                    try:
+                        log_url = Config.WORKER_URL.replace("/push", "/logs/push")
+                        async with session.post(
+                            log_url,
+                            json=entries,
+                            headers={"X-Push-Secret": Config.PUSH_SECRET},
+                            timeout=aiohttp.ClientTimeout(total=15),
+                        ) as resp:
+                            if resp.status != 200:
+                                logger.warning(f"logs push returned {resp.status}")
+                    except Exception as e:
+                        logger.warning(f"logs push failed: {e}")
+
+            await asyncio.sleep(STATS_INTERVAL)

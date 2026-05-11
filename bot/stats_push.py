@@ -21,7 +21,7 @@ def _cpu_temp():
 
 
 def _collect(prev_net, prev_time):
-    cpu = psutil.cpu_percent(interval=1)
+    cpu = psutil.cpu_percent(interval=None)
     ram = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     net = psutil.net_io_counters()

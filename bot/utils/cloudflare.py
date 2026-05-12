@@ -7,6 +7,8 @@ from bot.config import Config
 
 logger = logging.getLogger(__name__)
 
+FIRST_RUN_LOOKBACK_HOURS = 2
+
 
 class CloudflareKV:
     def __init__(self, session=None):
@@ -84,10 +86,15 @@ class CloudflareKV:
             return None
 
     async def store_last_feedback_check(self, ts: datetime) -> bool:
-        return await self.put_value('_last_feedback_check', {'ts': ts.isoformat()})
+        ok = await self.put_value('_last_feedback_check', {'ts': ts.isoformat()})
+        if ok:
+            logger.debug(f"KV stored last feedback check timestamp: {ts.isoformat()}")
+        return ok
 
     async def get_new_feedbacks_since(self, since: datetime) -> List[Dict]:
         all_feedbacks = await self.get_all_feedbacks()
+        logger.debug(f"get_new_feedbacks_since: checking {len(all_feedbacks)} total feedbacks against since={since.isoformat()}")
+
         new = []
         skipped = 0
         for f in all_feedbacks:
@@ -97,14 +104,18 @@ class CloudflareKV:
                 continue
             try:
                 dt = datetime.fromisoformat(submitted.replace('Z', '+00:00'))
+                logger.debug(f"  feedback '{f.get('id', '?')}' submittedAt={submitted} — {'NEW' if dt > since else 'old'}")
                 if dt > since:
                     new.append(f)
             except ValueError:
                 logger.warning(f"KV get_new_feedbacks_since: unparseable timestamp '{submitted}' in feedback '{f.get('id', '?')}'")
                 skipped += 1
                 continue
+
         if skipped:
             logger.warning(f"KV get_new_feedbacks_since: skipped {skipped} entries with missing/invalid timestamps")
+
+        logger.info(f"get_new_feedbacks_since: found {len(new)} new out of {len(all_feedbacks)} total")
         return sorted(new, key=lambda x: x.get('submittedAt', ''))
 
     async def add_tag(self, key: str, tag: str) -> bool:

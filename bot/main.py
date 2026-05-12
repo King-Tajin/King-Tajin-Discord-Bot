@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 from discord import app_commands
 from typing import Optional
 import logging
-from datetime import time, datetime, timezone
+from datetime import time, datetime, timezone, timedelta
 import aiohttp
 from bot.config import Config
 from bot.utils.cloudflare import CloudflareKV
@@ -15,6 +15,8 @@ from bot.utils.dm_responses import analyze_message, get_text_response, get_emoji
     is_support_message, get_support_embed
 
 logger = logging.getLogger(__name__)
+
+FEEDBACK_LOOKBACK_HOURS = 2
 
 
 def _fmt_diff(diff: int, format_fn) -> str:
@@ -106,9 +108,8 @@ class FeedbackBot(commands.Bot):
             now = datetime.now(timezone.utc)
 
             if since is None:
-                await self.kv.store_last_feedback_check(now)
-                logger.info("check_new_feedback: first run, storing baseline timestamp")
-                return
+                since = now - timedelta(hours=FEEDBACK_LOOKBACK_HOURS)
+                logger.info(f"check_new_feedback: first run, looking back {FEEDBACK_LOOKBACK_HOURS}h to {since.isoformat()}")
 
             new_feedbacks = await self.kv.get_new_feedbacks_since(since)
             await self.kv.store_last_feedback_check(now)

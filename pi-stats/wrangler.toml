@@ -7,5 +7,5 @@ binding = "DB"
 database_name = "pi-stats"
 database_id = "b6b85f6c-6b4d-40ff-bc9a-180bfa91ec48"
 
-[[triggers]]
+[triggers]
 crons = ["*/15 * * * *"]

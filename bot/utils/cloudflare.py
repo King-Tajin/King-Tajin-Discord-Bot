@@ -1,8 +1,11 @@
 import aiohttp
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from bot.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 class CloudflareKV:
@@ -27,7 +30,9 @@ class CloudflareKV:
                     try:
                         return json.loads(text)
                     except json.JSONDecodeError:
+                        logger.warning(f"KV get_value: invalid JSON for key '{key}'")
                         return None
+                logger.warning(f"KV get_value: status {response.status} for key '{key}'")
                 return None
 
     async def put_value(self, key: str, value: Dict) -> bool:
@@ -35,7 +40,10 @@ class CloudflareKV:
 
         async with aiohttp.ClientSession() as session:
             async with session.put(url, headers=self.headers, data=json.dumps(value)) as response:
-                return response.status in [200, 201]
+                ok = response.status in [200, 201]
+                if not ok:
+                    logger.warning(f"KV put_value: status {response.status} for key '{key}'")
+                return ok
 
     async def list_keys(self, prefix: str = "", limit: int = 1000) -> List[Dict]:
         url = f"{self.base_url}/keys"
@@ -47,7 +55,10 @@ class CloudflareKV:
             async with session.get(url, headers=self.headers, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data.get('result', [])
+                    keys = data.get('result', [])
+                    logger.debug(f"KV list_keys: found {len(keys)} keys with prefix='{prefix}'")
+                    return keys
+                logger.warning(f"KV list_keys: status {response.status} for prefix='{prefix}'")
                 return []
 
     async def get_all_feedbacks(self, prefix: str = "feedback_") -> List[Dict]:
@@ -69,6 +80,7 @@ class CloudflareKV:
         try:
             return datetime.fromisoformat(data['ts'])
         except ValueError:
+            logger.warning("KV get_last_feedback_check: invalid timestamp format")
             return None
 
     async def store_last_feedback_check(self, ts: datetime) -> bool:
@@ -77,16 +89,22 @@ class CloudflareKV:
     async def get_new_feedbacks_since(self, since: datetime) -> List[Dict]:
         all_feedbacks = await self.get_all_feedbacks()
         new = []
+        skipped = 0
         for f in all_feedbacks:
             submitted = f.get('submittedAt', '')
             if not submitted:
+                skipped += 1
                 continue
             try:
                 dt = datetime.fromisoformat(submitted.replace('Z', '+00:00'))
                 if dt > since:
                     new.append(f)
             except ValueError:
+                logger.warning(f"KV get_new_feedbacks_since: unparseable timestamp '{submitted}' in feedback '{f.get('id', '?')}'")
+                skipped += 1
                 continue
+        if skipped:
+            logger.warning(f"KV get_new_feedbacks_since: skipped {skipped} entries with missing/invalid timestamps")
         return sorted(new, key=lambda x: x.get('submittedAt', ''))
 
     async def add_tag(self, key: str, tag: str) -> bool:

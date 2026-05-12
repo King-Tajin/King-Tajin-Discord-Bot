@@ -2,9 +2,12 @@ import re
 import traceback
 import datetime
 import asyncio
+import logging
 import aiohttp
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, ViewportSize
 from bot.config import Config
+
+logger = logging.getLogger(__name__)
 
 BLOCKED_RESOURCES = {'image', 'stylesheet', 'font', 'media', 'other'}
 
@@ -61,7 +64,7 @@ async def get_curseforge_followers(username: str) -> int:
             response = await page.goto(url, wait_until='domcontentloaded', timeout=30000)
 
             if not response or response.status != 200:
-                print(f"[Scraper] Failed with HTTP {response.status if response else 'no response'}")
+                logger.warning(f"[CurseForge scraper] page returned HTTP {response.status if response else 'no response'}")
                 return 0
 
             await page.wait_for_timeout(2000)
@@ -70,17 +73,18 @@ async def get_curseforge_followers(username: str) -> int:
 
             match = re.search(r'([\d,]+\.?\d*[KkMmBb]?)\s+Followers?', text_content, re.IGNORECASE)
             if match:
-                return parse_abbreviated_number(match.group(1))
+                count = parse_abbreviated_number(match.group(1))
+                logger.debug(f"[CurseForge scraper] found followers: {match.group(1)} → {count}")
+                return count
 
-            print("[Scraper] Follower count not found in page")
+            logger.warning("[CurseForge scraper] follower count not found in page")
             return 0
 
     except PlaywrightTimeoutError:
-        print("[Scraper] Timed out")
+        logger.warning("[CurseForge scraper] timed out")
         return 0
     except Exception as e:
-        print(f"[Scraper] Error: {e}")
-        traceback.print_exc()
+        logger.error(f"[CurseForge scraper] error: {e}\n{traceback.format_exc()}")
         return 0
     finally:
         if browser:
@@ -89,7 +93,7 @@ async def get_curseforge_followers(username: str) -> int:
 
 async def get_curseforge_stats_api(username: str, session: aiohttp.ClientSession) -> dict | None:
     if not Config.CURSEFORGE_API_KEY or not Config.CURSEFORGE_AUTHOR_ID:
-        print("[API] CURSEFORGE_API_KEY or CURSEFORGE_AUTHOR_ID not configured.")
+        logger.warning("[CurseForge API] CURSEFORGE_API_KEY or CURSEFORGE_AUTHOR_ID not configured")
         return None
 
     try:
@@ -103,7 +107,7 @@ async def get_curseforge_stats_api(username: str, session: aiohttp.ClientSession
             url = f"https://api.curseforge.com/v1/mods/search?gameId=432&authorId={Config.CURSEFORGE_AUTHOR_ID}&pageSize=50&index={page * 50}"
             async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status != 200:
-                    print(f"[API] Failed with status {resp.status}")
+                    logger.warning(f"[CurseForge API] search returned {resp.status} on page {page}")
                     return None
 
                 data = await resp.json()
@@ -126,11 +130,13 @@ async def get_curseforge_stats_api(username: str, session: aiohttp.ClientSession
 
                 page += 1
 
+        logger.debug(f"[CurseForge API] fetched {project_count} projects across {page + 1} page(s), total downloads: {total_downloads:,}")
+
         mods.sort(key=lambda m: m['downloads'], reverse=True)
 
         current_year = datetime.datetime.now().year
         if project_count in range(current_year - 1, current_year + 2):
-            print(f"[API] Warning: Project count ({project_count}) looks like a year. Setting to 0.")
+            logger.warning(f"[CurseForge API] project count ({project_count}) looks like a year, setting to 0")
             project_count = 0
 
         return {
@@ -141,11 +147,10 @@ async def get_curseforge_stats_api(username: str, session: aiohttp.ClientSession
         }
 
     except aiohttp.ClientError as e:
-        print(f"[API] Network error: {e}")
+        logger.warning(f"[CurseForge API] network error: {e}")
         return None
     except Exception as e:
-        print(f"[API] Critical Error: {e}")
-        traceback.print_exc()
+        logger.error(f"[CurseForge API] unexpected error: {e}\n{traceback.format_exc()}")
         return None
 
 
@@ -156,11 +161,10 @@ async def get_curseforge_stats(username: str) -> dict | None:
             get_curseforge_followers(username),
         )
 
-    print(f"[CurseForge] API result: {api_result}")
-    print(f"[CurseForge] Followers: {followers}")
+    logger.info(f"[CurseForge] downloads={api_result['total_downloads'] if api_result else 'N/A'} projects={api_result['project_count'] if api_result else 'N/A'} followers={followers}")
 
     if not api_result or api_result['total_downloads'] == 0:
-        print("[CurseForge] API returned no data.")
+        logger.warning("[CurseForge] API returned no data")
         return None
 
     return {

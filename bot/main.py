@@ -9,12 +9,17 @@ from bot.config import Config
 from bot.utils.cloudflare import CloudflareKV
 from bot.utils.embeds import create_feedback_embed, create_feedback_list_embed, create_stats_embed, \
     create_curseforge_embed, create_modrinth_embed, create_new_feedback_embed
-from bot.utils.curseforge import get_curseforge_stats
-from bot.utils.modrinth import get_modrinth_stats
+from bot.utils.curseforge import get_curseforge_stats, format_number as cf_format
+from bot.utils.modrinth import get_modrinth_stats, format_number as mr_format
 from bot.utils.dm_responses import analyze_message, get_text_response, get_emoji_response, get_gif_response, \
     is_support_message, get_support_embed
 
 logger = logging.getLogger(__name__)
+
+
+def _fmt_diff(diff: int, format_fn) -> str:
+    prefix = "+" if diff > 0 else ""
+    return f"{prefix}{format_fn(diff)}"
 
 
 async def get_last_posted_stats(channel: discord.TextChannel, bot_user: discord.ClientUser, title_prefix: str) -> Optional[dict]:
@@ -85,12 +90,16 @@ class FeedbackBot(commands.Bot):
     @tasks.loop(time=[time(hour=h, minute=15) for h in range(0, 24, 2)])
     async def check_new_feedback(self):
         try:
-            if not Config.FEEDBACK_CHANNEL_ID or not Config.SUPPORT_ROLE_ID:
+            if not Config.FEEDBACK_CHANNEL_ID:
+                logger.warning("check_new_feedback: FEEDBACK_CHANNEL_ID not configured, skipping")
+                return
+            if not Config.SUPPORT_ROLE_ID:
+                logger.warning("check_new_feedback: SUPPORT_ROLE_ID not configured, skipping")
                 return
 
             channel = self.get_channel(int(Config.FEEDBACK_CHANNEL_ID))
             if not isinstance(channel, discord.TextChannel):
-                logger.error(f"Feedback channel {Config.FEEDBACK_CHANNEL_ID} not found or not a text channel")
+                logger.error(f"check_new_feedback: channel {Config.FEEDBACK_CHANNEL_ID} not found or not a text channel")
                 return
 
             since = await self.kv.get_last_feedback_check()
@@ -98,24 +107,24 @@ class FeedbackBot(commands.Bot):
 
             if since is None:
                 await self.kv.store_last_feedback_check(now)
-                logger.info("First feedback check run, storing baseline timestamp")
+                logger.info("check_new_feedback: first run, storing baseline timestamp")
                 return
 
             new_feedbacks = await self.kv.get_new_feedbacks_since(since)
             await self.kv.store_last_feedback_check(now)
 
             if not new_feedbacks:
-                logger.info("No new feedback since last check")
+                logger.info("check_new_feedback: no new feedback since last check")
                 return
 
             embed = create_new_feedback_embed(new_feedbacks)
             role_mention = f"<@&{Config.SUPPORT_ROLE_ID}>"
 
             await channel.send(content=role_mention, embed=embed)
-            logger.info(f"Posted {len(new_feedbacks)} new feedback entries to {channel.name}")
+            logger.info(f"check_new_feedback: posted {len(new_feedbacks)} new entries to #{channel.name}")
 
         except Exception as e:
-            logger.error(f"Error in check_new_feedback task: {e}")
+            logger.error(f"check_new_feedback task error: {e}")
 
     @check_new_feedback.before_loop
     async def before_check_new_feedback(self):
@@ -123,21 +132,20 @@ class FeedbackBot(commands.Bot):
 
     @tasks.loop(time=[time(hour=h, minute=30) for h in [0, 6, 12, 18]])
     async def update_curseforge_stats(self):
+        logger.info("update_curseforge_stats: task fired")
         try:
             stats = await get_curseforge_stats("king_tajin")
 
             if not stats or not Config.STATS_CHANNEL_ID:
+                logger.warning("update_curseforge_stats: no stats or STATS_CHANNEL_ID not configured")
                 return
 
             await self.kv.store_curseforge_stats(stats)
-            logger.info(f"Stored CurseForge stats in KV: {stats}")
 
             channel = self.get_channel(int(Config.STATS_CHANNEL_ID))
             if not isinstance(channel, discord.TextChannel):
-                logger.error(f"Channel {Config.STATS_CHANNEL_ID} not found or not a text channel")
+                logger.error(f"update_curseforge_stats: channel {Config.STATS_CHANNEL_ID} not found or not a text channel")
                 return
-
-            logger.info(f"Found channel: {channel.name}")
 
             bot_user = self.user
             if not bot_user:
@@ -149,6 +157,7 @@ class FeedbackBot(commands.Bot):
 
             if last_stats is None:
                 should_post = True
+                logger.info("update_curseforge_stats: no previous post found, posting initial stats")
             else:
                 download_diff = stats['total_downloads'] - last_stats.get('total_downloads', 0)
                 project_diff = stats['project_count'] - last_stats.get('project_count', 0)
@@ -156,14 +165,15 @@ class FeedbackBot(commands.Bot):
                 if download_diff != 0 or project_diff != 0:
                     should_post = True
 
-                if download_diff > 0:
-                    from bot.utils.curseforge import format_number
-                    changes.append(f"+{format_number(download_diff)} downloads")
-                if project_diff > 0:
-                    changes.append(f"+{project_diff} projects")
+                if download_diff != 0:
+                    changes.append(f"{_fmt_diff(download_diff, cf_format)} downloads")
+                if project_diff != 0:
+                    changes.append(f"{_fmt_diff(project_diff, cf_format)} projects")
+
+                logger.info(f"update_curseforge_stats: download_diff={download_diff:+,} project_diff={project_diff:+}")
 
             if not should_post:
-                logger.info("No changes in CurseForge stats, skipping post")
+                logger.info("update_curseforge_stats: no changes, skipping post")
                 return
 
             try:
@@ -177,15 +187,15 @@ class FeedbackBot(commands.Bot):
                     try:
                         await message.publish()
                     except discord.HTTPException as e:
-                        logger.error(f"Failed to publish message: {e}")
+                        logger.error(f"update_curseforge_stats: failed to publish message: {e}")
 
-                logger.info(f"Posted CurseForge stats update to channel {channel.name}")
+                logger.info(f"update_curseforge_stats: posted to #{channel.name}")
             except discord.Forbidden:
-                logger.error(f"No permission to post in channel {channel.name}")
+                logger.error(f"update_curseforge_stats: no permission to post in #{channel.name}")
             except discord.HTTPException as e:
-                logger.error(f"Error posting to channel: {e}")
+                logger.error(f"update_curseforge_stats: HTTP error posting: {e}")
         except Exception as e:
-            logger.error(f"Error in update_curseforge_stats task: {e}")
+            logger.error(f"update_curseforge_stats task error: {e}")
 
     @update_curseforge_stats.before_loop
     async def before_update_curseforge_stats(self):
@@ -193,22 +203,21 @@ class FeedbackBot(commands.Bot):
 
     @tasks.loop(time=[time(hour=h, minute=30) for h in [3, 9, 15, 21]])
     async def update_modrinth_stats(self):
+        logger.info("update_modrinth_stats: task fired")
         try:
             stats = await get_modrinth_stats("King_Tajin")
 
             if not stats or not Config.STATS_CHANNEL_ID:
+                logger.warning("update_modrinth_stats: no stats or STATS_CHANNEL_ID not configured")
                 return
 
             await self.kv.store_modrinth_stats(stats)
-            logger.info(f"Stored Modrinth stats in KV: {stats}")
 
             channel_id = int(Config.STATS_CHANNEL_ID)
             channel = self.get_channel(channel_id)
             if not isinstance(channel, discord.TextChannel):
-                logger.error(f"Channel {channel_id} not found or not a text channel")
+                logger.error(f"update_modrinth_stats: channel {channel_id} not found or not a text channel")
                 return
-
-            logger.info(f"Found channel: {channel.name}")
 
             bot_user = self.user
             if not bot_user:
@@ -220,6 +229,7 @@ class FeedbackBot(commands.Bot):
 
             if last_stats is None:
                 should_post = True
+                logger.info("update_modrinth_stats: no previous post found, posting initial stats")
             else:
                 download_diff = stats['total_downloads'] - last_stats.get('total_downloads', 0)
                 project_diff = stats['project_count'] - last_stats.get('project_count', 0)
@@ -228,16 +238,17 @@ class FeedbackBot(commands.Bot):
                 if download_diff != 0 or project_diff != 0 or follower_diff != 0:
                     should_post = True
 
-                if download_diff > 0:
-                    from bot.utils.modrinth import format_number
-                    changes.append(f"+{format_number(download_diff)} downloads")
-                if project_diff > 0:
-                    changes.append(f"+{project_diff} projects")
-                if follower_diff > 0:
-                    changes.append(f"+{follower_diff} followers")
+                if download_diff != 0:
+                    changes.append(f"{_fmt_diff(download_diff, mr_format)} downloads")
+                if project_diff != 0:
+                    changes.append(f"{_fmt_diff(project_diff, mr_format)} projects")
+                if follower_diff != 0:
+                    changes.append(f"{_fmt_diff(follower_diff, mr_format)} followers")
+
+                logger.info(f"update_modrinth_stats: download_diff={download_diff:+,} project_diff={project_diff:+} follower_diff={follower_diff:+}")
 
             if not should_post:
-                logger.info("No changes in Modrinth stats, skipping post")
+                logger.info("update_modrinth_stats: no changes, skipping post")
                 return
 
             try:
@@ -251,15 +262,15 @@ class FeedbackBot(commands.Bot):
                     try:
                         await message.publish()
                     except discord.HTTPException as e:
-                        logger.error(f"Failed to publish message: {e}")
+                        logger.error(f"update_modrinth_stats: failed to publish message: {e}")
 
-                logger.info(f"Posted Modrinth stats update to channel {channel.name}")
+                logger.info(f"update_modrinth_stats: posted to #{channel.name}")
             except discord.Forbidden:
-                logger.error(f"No permission to post in channel {channel.name}")
+                logger.error(f"update_modrinth_stats: no permission to post in #{channel.name}")
             except discord.HTTPException as e:
-                logger.error(f"Error posting to channel: {e}")
+                logger.error(f"update_modrinth_stats: HTTP error posting: {e}")
         except Exception as e:
-            logger.error(f"Error in update_modrinth_stats task: {e}")
+            logger.error(f"update_modrinth_stats task error: {e}")
 
     @update_modrinth_stats.before_loop
     async def before_update_modrinth_stats(self):
@@ -300,6 +311,7 @@ def create_bot() -> FeedbackBot:
             return
 
         if isinstance(message.channel, discord.DMChannel):
+            logger.info(f"DM from {message.author} (id={message.author.id}): '{message.content[:80]}'")
             if is_support_message(message):
                 await message.channel.send(embed=get_support_embed())
             else:
@@ -316,7 +328,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.error
     async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-        logger.error(f"Command error: {error}")
+        logger.error(f"Command error from {interaction.user} (id={interaction.user.id}): {error}")
         try:
             await interaction.followup.send("An unexpected error occurred.")
         except discord.HTTPException:
@@ -325,6 +337,7 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="view_feedback", description="View a specific feedback by ID")
     @app_commands.describe(feedback_id="The ID of the feedback to retrieve")
     async def get_feedback(interaction: discord.Interaction, feedback_id: str):
+        logger.info(f"/view_feedback called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}'")
         if not interaction.response.is_done():
             await interaction.response.defer()
         feedback = await bot.kv.get_value(feedback_id)
@@ -332,12 +345,14 @@ def create_bot() -> FeedbackBot:
             embed = create_feedback_embed(feedback)
             await interaction.followup.send(embed=embed)
         else:
+            logger.warning(f"/view_feedback: no feedback found for id='{feedback_id}'")
             await interaction.followup.send(f"No feedback found with ID: `{feedback_id}`")
 
     @bot.tree.command(name="list_feedback", description="List all feedback entries")
     @app_commands.describe(sentiment="Filter by sentiment (positive, negative, neutral)", category="Filter by category")
     async def list_feedback(interaction: discord.Interaction, sentiment: Optional[str] = None,
                             category: Optional[str] = None):
+        logger.info(f"/list_feedback called by {interaction.user} (id={interaction.user.id}) — sentiment={sentiment} category={category}")
         if not interaction.response.is_done():
             await interaction.response.defer()
         feedbacks = await bot.kv.get_all_feedbacks()
@@ -356,6 +371,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.command(name="feedback_stats", description="Get statistics about feedback")
     async def feedback_stats(interaction: discord.Interaction):
+        logger.info(f"/feedback_stats called by {interaction.user} (id={interaction.user.id})")
         if not interaction.response.is_done():
             await interaction.response.defer()
         feedbacks = await bot.kv.get_all_feedbacks()
@@ -368,10 +384,12 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="add_tag", description="Add a tag to a feedback entry")
     @app_commands.describe(feedback_id="The ID of the feedback to tag", tag="The tag to add")
     async def add_tag(interaction: discord.Interaction, feedback_id: str, tag: str):
+        logger.info(f"/add_tag called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}' tag='{tag}'")
         if not interaction.response.is_done():
             await interaction.response.defer()
         success = await bot.kv.add_tag(feedback_id, tag)
         if success:
+            logger.info(f"/add_tag: successfully tagged '{feedback_id}' with '{tag}'")
             await interaction.followup.send(f"Successfully added tag `{tag}` to feedback `{feedback_id}`")
         else:
             await interaction.followup.send(f"Failed to add tag. Feedback `{feedback_id}` not found.")
@@ -379,10 +397,12 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="mark_completed", description="Mark a feedback entry as completed")
     @app_commands.describe(feedback_id="The ID of the feedback to mark as completed")
     async def mark_completed(interaction: discord.Interaction, feedback_id: str):
+        logger.info(f"/mark_completed called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}'")
         if not interaction.response.is_done():
             await interaction.response.defer()
         success = await bot.kv.mark_completed(feedback_id, True)
         if success:
+            logger.info(f"/mark_completed: '{feedback_id}' marked completed")
             await interaction.followup.send(f"Successfully marked feedback `{feedback_id}` as completed")
         else:
             await interaction.followup.send(f"Failed to update feedback. Feedback `{feedback_id}` not found.")
@@ -390,16 +410,19 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="mark_pending", description="Mark a feedback entry as pending")
     @app_commands.describe(feedback_id="The ID of the feedback to mark as pending")
     async def mark_pending(interaction: discord.Interaction, feedback_id: str):
+        logger.info(f"/mark_pending called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}'")
         if not interaction.response.is_done():
             await interaction.response.defer()
         success = await bot.kv.mark_completed(feedback_id, False)
         if success:
+            logger.info(f"/mark_pending: '{feedback_id}' marked pending")
             await interaction.followup.send(f"Successfully marked feedback `{feedback_id}` as pending")
         else:
             await interaction.followup.send(f"Failed to update feedback. Feedback `{feedback_id}` not found.")
 
     @bot.tree.command(name="curseforge_stats", description="Get CurseForge statistics for king_tajin")
     async def curseforge_stats(interaction: discord.Interaction):
+        logger.info(f"/curseforge_stats called by {interaction.user} (id={interaction.user.id})")
         if not interaction.response.is_done():
             await interaction.response.defer()
         stats = await get_curseforge_stats("king_tajin")
@@ -411,6 +434,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.command(name="modrinth_stats", description="Get Modrinth statistics for King_Tajin")
     async def modrinth_stats(interaction: discord.Interaction):
+        logger.info(f"/modrinth_stats called by {interaction.user} (id={interaction.user.id})")
         if not interaction.response.is_done():
             await interaction.response.defer()
         stats = await get_modrinth_stats("King_Tajin")
@@ -422,6 +446,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.command(name="post_curseforge_stats", description="Manually post CurseForge stats to the stats channel")
     async def post_curseforge_stats(interaction: discord.Interaction):
+        logger.info(f"/post_curseforge_stats called by {interaction.user} (id={interaction.user.id})")
         if not interaction.response.is_done():
             await interaction.response.defer()
 
@@ -441,7 +466,6 @@ def create_bot() -> FeedbackBot:
 
         try:
             await bot.kv.store_curseforge_stats(stats)
-
             embed = create_curseforge_embed(stats)
             message = await channel.send(embed=embed)
 
@@ -449,7 +473,7 @@ def create_bot() -> FeedbackBot:
                 try:
                     await message.publish()
                 except discord.HTTPException as e:
-                    logger.error(f"Failed to publish message: {e}")
+                    logger.error(f"/post_curseforge_stats: failed to publish: {e}")
 
             await interaction.followup.send(f"Posted stats to {channel.mention}")
         except discord.Forbidden:
@@ -460,6 +484,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.command(name="post_modrinth_stats", description="Manually post Modrinth stats to the stats channel")
     async def post_modrinth_stats(interaction: discord.Interaction):
+        logger.info(f"/post_modrinth_stats called by {interaction.user} (id={interaction.user.id})")
         if not interaction.response.is_done():
             await interaction.response.defer()
 
@@ -480,7 +505,6 @@ def create_bot() -> FeedbackBot:
 
         try:
             await bot.kv.store_modrinth_stats(stats)
-
             embed = create_modrinth_embed(stats)
             message = await channel.send(embed=embed)
 
@@ -488,7 +512,7 @@ def create_bot() -> FeedbackBot:
                 try:
                     await message.publish()
                 except discord.HTTPException as e:
-                    logger.error(f"Failed to publish message: {e}")
+                    logger.error(f"/post_modrinth_stats: failed to publish: {e}")
 
             await interaction.followup.send(f"Posted stats to {channel.mention}")
         except discord.Forbidden:
@@ -499,6 +523,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.command(name="clear_commands", description="Clear duplicate slash commands")
     async def clear_commands(interaction: discord.Interaction):
+        logger.info(f"/clear_commands called by {interaction.user} (id={interaction.user.id})")
         if not interaction.response.is_done():
             await interaction.response.defer()
         bot.tree.clear_commands(guild=None)

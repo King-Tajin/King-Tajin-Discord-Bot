@@ -35,6 +35,17 @@ export default {
 
     return new Response("Not Found", { status: 404 });
   },
+
+  async scheduled(event, env) {
+    await env.DB.batch([
+      env.DB.prepare(
+        `DELETE FROM stats WHERE datetime(updated_at) < datetime('now', '-1 hour')`
+      ),
+      env.DB.prepare(
+        `DELETE FROM logs WHERE datetime(ts) < datetime('now', '-12 hours')`
+      ),
+    ]);
+  },
 };
 
 function isPushAuthed(request, env) {
@@ -60,31 +71,26 @@ async function handleStatsPush(request, env) {
     return new Response("Bad Request", { status: 400 });
   }
 
-  await env.DB.batch([
-    env.DB.prepare(`
-      INSERT INTO stats (
-        cpu_percent, ram_percent, ram_used_mb, ram_total_mb,
-        cpu_temp, disk_percent, disk_used_gb, disk_total_gb,
-        net_sent_bps, net_recv_bps, uptime_seconds, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      data.cpu_percent,
-      data.ram_percent,
-      data.ram_used_mb,
-      data.ram_total_mb,
-      data.cpu_temp ?? null,
-      data.disk_percent,
-      data.disk_used_gb,
-      data.disk_total_gb,
-      data.net_sent_bps,
-      data.net_recv_bps,
-      data.uptime_seconds,
-      new Date().toISOString()
-    ),
-    env.DB.prepare(
-      `DELETE FROM stats WHERE updated_at < datetime('now', '-1 hour')`
-    ),
-  ]);
+  await env.DB.prepare(`
+    INSERT INTO stats (
+      cpu_percent, ram_percent, ram_used_mb, ram_total_mb,
+      cpu_temp, disk_percent, disk_used_gb, disk_total_gb,
+      net_sent_bps, net_recv_bps, uptime_seconds, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    data.cpu_percent,
+    data.ram_percent,
+    data.ram_used_mb,
+    data.ram_total_mb,
+    data.cpu_temp ?? null,
+    data.disk_percent,
+    data.disk_used_gb,
+    data.disk_total_gb,
+    data.net_sent_bps,
+    data.net_recv_bps,
+    data.uptime_seconds,
+    new Date().toISOString()
+  ).run();
 
   return new Response("OK", { status: 200 });
 }
@@ -111,12 +117,7 @@ async function handleLogsPush(request, env) {
     ).bind(e.ts, e.unit ?? null, e.priority ?? null, e.message)
   );
 
-  await env.DB.batch([
-    ...inserts,
-    env.DB.prepare(
-      `DELETE FROM logs WHERE ts < datetime('now', '-12 hours')`
-    ),
-  ]);
+  await env.DB.batch(inserts);
 
   return new Response("OK", { status: 200 });
 }
@@ -140,7 +141,7 @@ async function handleStats(env) {
 
 async function handleHistory(env) {
   const { results } = await env.DB.prepare(
-    "SELECT * FROM stats ORDER BY id ASC"
+    `SELECT * FROM stats WHERE datetime(updated_at) > datetime('now', '-1 hour') ORDER BY id ASC`
   ).all();
 
   return new Response(JSON.stringify(results), {
@@ -157,20 +158,18 @@ async function handleLogs(request, env) {
   const unit = url.searchParams.get("unit");
   const priority = url.searchParams.get("priority");
 
-  let query = "SELECT * FROM logs";
-  const conditions = [];
+  let query = `SELECT * FROM logs WHERE datetime(ts) > datetime('now', '-12 hours')`;
   const binds = [];
 
   if (unit) {
-    conditions.push("unit = ?");
+    query += " AND unit = ?";
     binds.push(unit);
   }
   if (priority !== null) {
-    conditions.push("priority <= ?");
+    query += " AND priority <= ?";
     binds.push(parseInt(priority));
   }
 
-  if (conditions.length) query += " WHERE " + conditions.join(" AND ");
   query += " ORDER BY id ASC";
 
   const { results } = await env.DB.prepare(query).bind(...binds).all();

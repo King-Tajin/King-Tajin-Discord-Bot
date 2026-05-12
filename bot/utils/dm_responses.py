@@ -1,6 +1,9 @@
 import random
 import re
+import logging
 import discord
+
+logger = logging.getLogger(__name__)
 
 OK_TEXTS = [
     "ok",
@@ -94,7 +97,11 @@ def is_support_message(message) -> bool:
     if re.match(r'^https?://\S+$', content):
         return False
     content_lower = content.lower()
-    return any(keyword in content_lower for keyword in SUPPORT_KEYWORDS)
+    for keyword in SUPPORT_KEYWORDS:
+        if keyword in content_lower:
+            logger.info(f"Support keyword '{keyword}' detected in DM from {message.author} (id={message.author.id})")
+            return True
+    return False
 
 
 def analyze_message(message) -> tuple[bool, bool, bool]:
@@ -128,6 +135,9 @@ def analyze_message(message) -> tuple[bool, bool, bool]:
 
     if content:
         has_text = True
+
+    detected = [t for t, v in [("text", has_text), ("emoji", has_emoji), ("gif", has_gif)] if v]
+    logger.debug(f"DM from {message.author} (id={message.author.id}) contains: {detected or ['nothing']}")
 
     return has_text, has_emoji, has_gif
 

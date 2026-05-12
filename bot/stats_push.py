@@ -59,12 +59,12 @@ def _collect(prev_net, prev_time):
 
 def _collect_logs(since: datetime) -> list[dict]:
     try:
-        since_str = since.strftime("%Y-%m-%d %H:%M:%S")
+        local_since = since.astimezone().replace(tzinfo=None)
+        since_str = local_since.strftime("%Y-%m-%d %H:%M:%S")
         result = subprocess.run(
             [
                 "journalctl",
                 "--since", since_str,
-                "--utc",
                 "--output", "json",
                 "--no-pager",
             ],

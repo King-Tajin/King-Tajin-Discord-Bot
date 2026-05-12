@@ -1,5 +1,5 @@
 import discord
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def create_feedback_embed(feedback: dict) -> discord.Embed:
@@ -58,7 +58,7 @@ def create_feedback_list_embed(feedbacks: list) -> discord.Embed:
     embed = discord.Embed(
         title=f"Feedback List ({len(feedbacks)} entries)",
         color=discord.Color.blue(),
-        timestamp=datetime.now()
+        timestamp=datetime.now(timezone.utc)
     )
 
     if not feedbacks:
@@ -101,7 +101,7 @@ def create_new_feedback_embed(feedbacks: list) -> discord.Embed:
     embed = discord.Embed(
         title=f"🔔 {count} New Feedback {'Entry' if count == 1 else 'Entries'}",
         color=discord.Color.yellow(),
-        timestamp=datetime.now()
+        timestamp=datetime.now(timezone.utc)
     )
 
     sentiment_icons = {'positive': '🟢', 'negative': '🔴', 'neutral': '🟡'}
@@ -144,7 +144,7 @@ def create_stats_embed(feedbacks: list) -> discord.Embed:
     embed = discord.Embed(
         title="Feedback Statistics",
         color=discord.Color.blue(),
-        timestamp=datetime.now()
+        timestamp=datetime.now(timezone.utc)
     )
 
     embed.add_field(name="Total Feedback", value=f"**{total}**", inline=False)
@@ -169,7 +169,7 @@ def create_curseforge_embed(stats: dict) -> discord.Embed:
         title=f"CurseForge Stats - {stats['username']}",
         color=discord.Color.from_rgb(240, 84, 44),
         url=f"https://www.curseforge.com/members/{stats['username']}/projects",
-        timestamp=datetime.now()
+        timestamp=datetime.now(timezone.utc)
     )
 
     embed.add_field(name="Followers", value=f"**{format_number(stats['followers'])}**", inline=True)
@@ -187,7 +187,7 @@ def create_modrinth_embed(stats: dict) -> discord.Embed:
         title=f"Modrinth Stats - {stats['username']}",
         color=discord.Color.from_rgb(30, 175, 115),
         url=f"https://modrinth.com/user/{stats['username']}",
-        timestamp=datetime.now()
+        timestamp=datetime.now(timezone.utc)
     )
 
     embed.add_field(name="Followers", value=f"**{format_number(stats['followers'])}**", inline=True)

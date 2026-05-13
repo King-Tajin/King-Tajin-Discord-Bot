@@ -17,6 +17,10 @@ LOG_INTERVAL = 120
 
 _last_log_fetch = None
 
+_LOG_FILTERS = [
+    "logs push OK",
+]
+
 
 def _base_worker_url() -> str:
     url = Config.WORKER_URL or ""
@@ -57,6 +61,10 @@ def _collect(prev_net, prev_time):
     }, net, now
 
 
+def _is_filtered(message: str) -> bool:
+    return any(f in message for f in _LOG_FILTERS)
+
+
 def _collect_logs(since: datetime) -> list[dict]:
     try:
         local_since = since.astimezone().replace(tzinfo=None)
@@ -74,9 +82,14 @@ def _collect_logs(since: datetime) -> list[dict]:
         )
         entries = []
         skipped = 0
+        filtered = 0
         for line in result.stdout.splitlines():
             try:
                 e = json.loads(line)
+                message = e.get("MESSAGE", "")
+                if _is_filtered(message):
+                    filtered += 1
+                    continue
                 entries.append({
                     "ts": datetime.fromtimestamp(
                         int(e.get("__REALTIME_TIMESTAMP", 0)) / 1_000_000,
@@ -84,13 +97,15 @@ def _collect_logs(since: datetime) -> list[dict]:
                     ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "unit": e.get("_SYSTEMD_UNIT") or e.get("SYSLOG_IDENTIFIER"),
                     "priority": int(e["PRIORITY"]) if "PRIORITY" in e else None,
-                    "message": e.get("MESSAGE", ""),
+                    "message": message,
                 })
             except (json.JSONDecodeError, ValueError):
                 skipped += 1
                 continue
         if skipped:
             logger.warning(f"log collection skipped {skipped} unparseable journal lines")
+        if filtered:
+            logger.debug(f"log collection filtered {filtered} noisy lines")
         return entries
     except Exception as e:
         logger.warning(f"log collection failed: {e}")

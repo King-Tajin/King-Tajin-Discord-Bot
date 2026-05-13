@@ -19,7 +19,8 @@ def create_feedback_embed(feedback: dict) -> discord.Embed:
     )
 
     message = feedback.get('message', 'No message provided')
-    embed.description = f"```{message}```"
+    truncated = (message[:4000] + '…') if len(message) > 4000 else message
+    embed.description = f"```{truncated}```"
 
     embed.add_field(name="Sentiment", value=sentiment.title(), inline=True)
     embed.add_field(name="Category", value=category.title(), inline=True)

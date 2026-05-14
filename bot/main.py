@@ -135,13 +135,9 @@ class FeedbackBot(commands.Bot):
     async def update_curseforge_stats(self):
         logger.info("update_curseforge_stats: task fired")
         try:
-            stats = await get_curseforge_stats("king_tajin")
-
-            if not stats or not Config.STATS_CHANNEL_ID:
-                logger.warning("update_curseforge_stats: no stats or STATS_CHANNEL_ID not configured")
+            if not Config.STATS_CHANNEL_ID:
+                logger.warning("update_curseforge_stats: STATS_CHANNEL_ID not configured")
                 return
-
-            await self.kv.store_curseforge_stats(stats)
 
             channel = self.get_channel(int(Config.STATS_CHANNEL_ID))
             if not isinstance(channel, discord.TextChannel):
@@ -151,7 +147,21 @@ class FeedbackBot(commands.Bot):
             bot_user = self.user
             if not bot_user:
                 return
+
+            stats = await get_curseforge_stats("king_tajin")
+
+            if not stats:
+                logger.warning("update_curseforge_stats: no stats or STATS_CHANNEL_ID not configured")
+                return
+
             last_stats = await get_last_posted_stats(channel, bot_user, "CurseForge Stats")
+
+            if stats['followers'] is None:
+                fallback = last_stats.get('followers', 0) if last_stats else 0
+                logger.info(f"update_curseforge_stats: scraper failed, using fallback followers={fallback}")
+                stats['followers'] = fallback
+
+            await self.kv.store_curseforge_stats(stats)
 
             should_post = False
             changes = []
@@ -428,6 +438,8 @@ def create_bot() -> FeedbackBot:
             await interaction.response.defer()
         stats = await get_curseforge_stats("king_tajin")
         if stats:
+            if stats['followers'] is None:
+                stats['followers'] = 0
             embed = create_curseforge_embed(stats)
             await interaction.followup.send(embed=embed)
         else:
@@ -459,6 +471,9 @@ def create_bot() -> FeedbackBot:
         if not stats:
             await interaction.followup.send("Failed to retrieve CurseForge stats.")
             return
+
+        if stats['followers'] is None:
+            stats['followers'] = 0
 
         channel = bot.get_channel(int(Config.STATS_CHANNEL_ID))
         if not isinstance(channel, discord.TextChannel):

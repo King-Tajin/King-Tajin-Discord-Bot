@@ -4,7 +4,7 @@ import datetime
 import asyncio
 import logging
 import aiohttp
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, ViewportSize
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, ViewportSize, Error as PlaywrightError
 from bot.config import Config
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def parse_abbreviated_number(text: str) -> int:
     return int(text)
 
 
-async def get_curseforge_followers(username: str) -> int:
+async def get_curseforge_followers(username: str) -> int | None:
     url = f"https://www.curseforge.com/members/{username}/projects"
     browser = None
     try:
@@ -56,36 +56,45 @@ async def get_curseforge_followers(username: str) -> int:
 
             page = await context.new_page()
 
-            await page.route(
-                "**/*",
-                lambda route: route.abort() if route.request.resource_type in BLOCKED_RESOURCES else route.continue_()
-            )
+            async def handle_route(route):
+                if route.request.resource_type in BLOCKED_RESOURCES:
+                    await route.abort()
+                else:
+                    await route.continue_()
 
-            response = await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            await page.route("**/*", handle_route)
 
-            if not response or response.status != 200:
-                logger.warning(f"[CurseForge scraper] page returned HTTP {response.status if response else 'no response'}")
-                return 0
+            try:
+                response = await page.goto(url, wait_until='domcontentloaded', timeout=30000)
 
-            await page.wait_for_timeout(2000)
+                if not response or response.status != 200:
+                    logger.warning(f"[CurseForge scraper] page returned HTTP {response.status if response else 'no response'}")
+                    return None
 
-            text_content = await page.inner_text('body')
+                await page.wait_for_timeout(2000)
 
-            match = re.search(r'([\d,]+\.?\d*[KkMmBb]?)\s+Followers?', text_content, re.IGNORECASE)
-            if match:
-                count = parse_abbreviated_number(match.group(1))
-                logger.debug(f"[CurseForge scraper] found followers: {match.group(1)} → {count}")
-                return count
+                text_content = await page.inner_text('body')
 
-            logger.warning("[CurseForge scraper] follower count not found in page")
-            return 0
+                match = re.search(r'([\d,]+\.?\d*[KkMmBb]?)\s+Followers?', text_content, re.IGNORECASE)
+                if match:
+                    count = parse_abbreviated_number(match.group(1))
+                    logger.debug(f"[CurseForge scraper] found followers: {match.group(1)} → {count}")
+                    return count
+
+                logger.warning("[CurseForge scraper] follower count not found in page")
+                return None
+            finally:
+                try:
+                    await page.unroute_all(behavior='ignoreErrors')
+                except PlaywrightError:
+                    pass
 
     except PlaywrightTimeoutError:
         logger.warning("[CurseForge scraper] timed out")
-        return 0
+        return None
     except Exception as e:
         logger.error(f"[CurseForge scraper] error: {e}\n{traceback.format_exc()}")
-        return 0
+        return None
     finally:
         if browser:
             await browser.close()

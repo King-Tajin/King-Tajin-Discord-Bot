@@ -12,7 +12,7 @@ from bot.utils.embeds import create_feedback_embed, create_feedback_list_embed, 
 from bot.utils.curseforge import get_curseforge_stats, format_number as cf_format
 from bot.utils.modrinth import get_modrinth_stats, format_number as mr_format
 from bot.utils.dm_responses import analyze_message, get_text_response, get_emoji_response, get_gif_response, \
-    is_support_message, get_support_embed
+    is_support_message, get_support_embed, is_vagudle_message, get_vagudle_embed
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +323,9 @@ def create_bot() -> FeedbackBot:
 
         if isinstance(message.channel, discord.DMChannel):
             logger.info(f"DM from {message.author} (id={message.author.id}): '{message.content[:80]}'")
-            if is_support_message(message):
+            if is_vagudle_message(message):
+                await message.channel.send(embed=get_vagudle_embed())
+            elif is_support_message(message):
                 await message.channel.send(embed=get_support_embed())
             else:
                 has_text, has_emoji, has_gif = analyze_message(message)

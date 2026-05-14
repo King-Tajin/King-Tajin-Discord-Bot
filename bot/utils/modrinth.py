@@ -58,11 +58,4 @@ async def get_modrinth_stats(username):
 
 
 def format_number(num: int) -> str:
-    if num >= 1000000000:
-        return f"{num / 1000000000:.1f}B"
-    elif num >= 1000000:
-        return f"{num / 1000000:.1f}M"
-    elif num >= 1000:
-        return f"{num / 1000:.1f}K"
-    else:
-        return str(num)
+    return "{:,}".format(num)

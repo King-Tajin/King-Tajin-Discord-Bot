@@ -72,9 +72,13 @@ class FeedbackBot(commands.Bot):
 
         if Config.GUILD_ID:
             guild = discord.Object(id=Config.GUILD_ID)
+            vagudle_cmd = self.tree.remove_command("vagudle_challenge")
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
-            logger.info("Synced slash commands to guild")
+            if vagudle_cmd:
+                self.tree.add_command(vagudle_cmd)
+            await self.tree.sync()
+            logger.info("Synced slash commands to guild, vagudle_challenge globally")
         else:
             await self.tree.sync()
             logger.info("Synced slash commands globally")
@@ -592,19 +596,17 @@ def create_bot() -> FeedbackBot:
             f"— word='{word}' dict='{dictionary.value}' guesses={guesses.value}"
         )
 
-        await interaction.response.defer()
-
         clean = word.upper().replace(" ", "")
 
         if not clean.isalpha():
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 "❌ The word can only contain letters — no spaces, numbers, or symbols.",
                 ephemeral=True,
             )
             return
 
         if len(clean) < 4 or len(clean) > 7:
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"❌ `{clean}` is {len(clean)} letter{'s' if len(clean) != 1 else ''} long. Words must be 4–7 letters.",
                 ephemeral=True,
             )
@@ -613,7 +615,7 @@ def create_bot() -> FeedbackBot:
         dict_type: ChallengeDict = dictionary.value  # type: ignore[assignment]
 
         if not is_word_in_dict(clean, dict_type):
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"❌ `{clean}` isn't in the **{DICT_LABELS[dict_type]}** dictionary "
                 f"({DICT_DESCRIPTIONS[dict_type].lower()}).\n"
                 f"Try a different word or switch to a broader dictionary.",
@@ -634,6 +636,6 @@ def create_bot() -> FeedbackBot:
         )
         embed.add_field(name="Challenge Link", value=url, inline=False)
         embed.set_footer(text="Results won't affect your stats.")
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     return bot

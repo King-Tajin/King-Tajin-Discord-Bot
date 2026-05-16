@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
+from discord.app_commands import InstallationContext
 from typing import Optional
 import logging
 from datetime import time, datetime, timezone, timedelta
@@ -571,6 +572,8 @@ def create_bot() -> FeedbackBot:
         name="vagudle_challenge",
         description="Create a custom Vagudle challenge link to send to someone",
     )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(
         word="The secret word (4–7 letters) — must exist in the chosen dictionary",
         dictionary="Which word list the challenger must guess from",

@@ -72,11 +72,13 @@ class FeedbackBot(commands.Bot):
 
         if Config.GUILD_ID:
             guild = discord.Object(id=Config.GUILD_ID)
-            vagudle_cmd = self.tree.remove_command("vagudle_challenge")
-            self.tree.copy_global_to(guild=guild)
+            all_commands = list(self.tree.get_commands())
+            self.tree.clear_commands(guild=None)
+            for cmd in all_commands:
+                self.tree.add_command(cmd, guild=guild)
+                if cmd.name == "vagudle_challenge":
+                    self.tree.add_command(cmd)
             await self.tree.sync(guild=guild)
-            if vagudle_cmd:
-                self.tree.add_command(vagudle_cmd)
             await self.tree.sync()
             logger.info("Synced slash commands to guild, vagudle_challenge globally")
         else:

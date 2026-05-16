@@ -103,7 +103,7 @@ def is_vagudle_message(message) -> bool:
     content = message.content.strip().lower()
     for keyword in VAGUDLE_KEYWORDS:
         if keyword in content:
-            logger.info(f"Vagudle keyword '{keyword}' detected in DM from {message.author} (id={message.author.id})")
+            logger.info(f"Vagudle keyword '{keyword}' detected in message from {message.author} (id={message.author.id})")
             return True
     return False
 
@@ -206,6 +206,19 @@ def get_vagudle_embed() -> discord.Embed:
         inline=False,
     )
     embed.set_footer(text="vagudle.king-tajin.dev · King-Tajin")
+    return embed
+
+
+def get_challenge_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="⚔️ Challenge a Friend",
+        description=(
+            "Want to put someone to the test? Use `/vagudle_challenge` to pick a secret word "
+            "and generate a custom challenge link — works in DMs and servers!"
+        ),
+        color=0x5000AA,
+    )
+    embed.set_footer(text="Challenge results don't affect the recipient's stats.")
     return embed
 
 

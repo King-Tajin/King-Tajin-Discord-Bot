@@ -12,7 +12,11 @@ from bot.utils.embeds import create_feedback_embed, create_feedback_list_embed, 
 from bot.utils.curseforge import get_curseforge_stats, format_number as cf_format
 from bot.utils.modrinth import get_modrinth_stats, format_number as mr_format
 from bot.utils.dm_responses import analyze_message, get_text_response, get_emoji_response, get_gif_response, \
-    is_support_message, get_support_embed, is_vagudle_message, get_vagudle_embed
+    is_support_message, get_support_embed, is_vagudle_message, get_vagudle_embed, get_challenge_embed
+from bot.utils.challenge import (
+    encode_challenge, build_challenge_url, is_word_in_dict,
+    DICT_LABELS, DICT_DESCRIPTIONS, ChallengeDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +321,11 @@ def create_bot() -> FeedbackBot:
             role_pinged = any(role in message.role_mentions for role in message.guild.me.roles)
 
         if user_pinged or role_pinged:
-            await message.reply(embed=get_support_embed())
+            if is_vagudle_message(message):
+                await message.reply(embed=get_vagudle_embed())
+                await message.channel.send(embed=get_challenge_embed())
+            else:
+                await message.reply(embed=get_support_embed())
             await bot.process_commands(message)
             return
 
@@ -325,6 +333,7 @@ def create_bot() -> FeedbackBot:
             logger.info(f"DM from {message.author} (id={message.author.id}): '{message.content[:80]}'")
             if is_vagudle_message(message):
                 await message.channel.send(embed=get_vagudle_embed())
+                await message.channel.send(embed=get_challenge_embed())
             elif is_support_message(message):
                 await message.channel.send(embed=get_support_embed())
             else:
@@ -530,7 +539,7 @@ def create_bot() -> FeedbackBot:
                 try:
                     await message.publish()
                 except discord.HTTPException as e:
-                    logger.error(f"/post_modrinth_stats: failed to publish: {e}")
+                    logger.error(f"/post_modrinth_stats: failed to publish message: {e}")
 
             await interaction.followup.send(f"Posted stats to {channel.mention}")
         except discord.Forbidden:
@@ -551,5 +560,80 @@ def create_bot() -> FeedbackBot:
             bot.tree.clear_commands(guild=guild)
             await bot.tree.sync(guild=guild)
         await interaction.followup.send("Cleared all commands. Restart the bot to re-register them.")
+
+    @bot.tree.command(
+        name="vagudle_challenge",
+        description="Create a custom Vagudle challenge link to send to someone",
+    )
+    @app_commands.describe(
+        word="The secret word (4–7 letters) — must exist in the chosen dictionary",
+        dictionary="Which word list the challenger must guess from",
+        guesses="How many attempts the challenger gets",
+    )
+    @app_commands.choices(
+        dictionary=[
+            app_commands.Choice(name="Normal — Common English words", value="normal"),
+            app_commands.Choice(name="Hard — Uncommon English words", value="hard"),
+            app_commands.Choice(name="Extreme — Full Scrabble dictionary", value="full"),
+        ],
+        guesses=[
+            app_commands.Choice(name="9 guesses", value=9),
+            app_commands.Choice(name="11 guesses", value=11),
+        ],
+    )
+    async def vagudle_challenge(
+        interaction: discord.Interaction,
+        word: str,
+        dictionary: app_commands.Choice[str],
+        guesses: app_commands.Choice[int],
+    ):
+        logger.info(
+            f"/vagudle_challenge called by {interaction.user} (id={interaction.user.id}) "
+            f"— word='{word}' dict='{dictionary.value}' guesses={guesses.value}"
+        )
+
+        await interaction.response.defer()
+
+        clean = word.upper().replace(" ", "")
+
+        if not clean.isalpha():
+            await interaction.followup.send(
+                "❌ The word can only contain letters — no spaces, numbers, or symbols.",
+                ephemeral=True,
+            )
+            return
+
+        if len(clean) < 4 or len(clean) > 7:
+            await interaction.followup.send(
+                f"❌ `{clean}` is {len(clean)} letter{'s' if len(clean) != 1 else ''} long. Words must be 4–7 letters.",
+                ephemeral=True,
+            )
+            return
+
+        dict_type: ChallengeDict = dictionary.value  # type: ignore[assignment]
+
+        if not is_word_in_dict(clean, dict_type):
+            await interaction.followup.send(
+                f"❌ `{clean}` isn't in the **{DICT_LABELS[dict_type]}** dictionary "
+                f"({DICT_DESCRIPTIONS[dict_type].lower()}).\n"
+                f"Try a different word or switch to a broader dictionary.",
+                ephemeral=True,
+            )
+            return
+
+        encoded, challenge_id = encode_challenge(clean, dict_type, guesses.value)
+        url = build_challenge_url(Config.VAGUDLE_URL, encoded)
+
+        logger.info(f"/vagudle_challenge: generated id={challenge_id} url={url}")
+
+        embed = discord.Embed(
+            title="Share with your friends!",
+            description=f"{len(clean)} letters · {DICT_LABELS[dict_type]} dictionary · {guesses.value} guesses",
+            color=discord.Color.from_rgb(80, 0, 170),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="Challenge Link", value=url, inline=False)
+        embed.set_footer(text="Results won't affect your stats.")
+        await interaction.followup.send(embed=embed)
 
     return bot

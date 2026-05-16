@@ -16,6 +16,8 @@ class Config:
     CURSEFORGE_AUTHOR_ID = os.getenv('CURSEFORGE_AUTHOR_ID')
     WORKER_URL = os.getenv('WORKER_URL')
     PUSH_SECRET = os.getenv('PUSH_SECRET')
+    VAGUDLE_URL = "https://vagudle.king-tajin.dev"
+    CHALLENGE_KEY = os.getenv('CHALLENGE_KEY', 'KTvagudle9x2challenge')
 
     @classmethod
     def validate(cls):

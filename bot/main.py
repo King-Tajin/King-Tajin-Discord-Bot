@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from discord.app_commands import InstallationContext
 from typing import Optional
 import logging
 from datetime import time, datetime, timezone, timedelta

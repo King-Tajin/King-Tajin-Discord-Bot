@@ -192,7 +192,7 @@ def get_vagudle_embed() -> discord.Embed:
     embed.add_field(
         name="✨ Features",
         value=(
-            "• **Variable word length** — 4, 5, 6, or 7-letter words\n"
+            "• **Variable word length** — 4 through 7-letter words\n"
             "• **Unlimited games** — no daily limit\n"
             "• **Hard mode** — fewer guesses, harder words\n"
             "• **Auto-Gray / Auto-Green** — optional automation to speed up painting\n"
@@ -214,7 +214,7 @@ def get_challenge_embed() -> discord.Embed:
         title="⚔️ Challenge a Friend",
         description=(
             "Want to put someone to the test? Use `/vagudle_challenge` to pick a secret word "
-            "and generate a custom challenge link — works in DMs and servers!"
+            "and generate a custom challenge link, works in both DMs and servers!"
         ),
         color=0x5000AA,
     )

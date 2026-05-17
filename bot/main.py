@@ -28,6 +28,15 @@ def _fmt_diff(diff: int, format_fn) -> str:
     return f"{prefix}{format_fn(diff)}"
 
 
+async def _check_guild(interaction: discord.Interaction) -> bool:
+    if not Config.GUILD_ID:
+        return True
+    if not interaction.guild or interaction.guild.id != int(Config.GUILD_ID):
+        await interaction.response.send_message("This command is not available here.", ephemeral=True)
+        return False
+    return True
+
+
 async def get_last_posted_stats(channel: discord.TextChannel, bot_user: discord.ClientUser, title_prefix: str) -> Optional[dict]:
     async for message in channel.history(limit=200):
         if message.author != bot_user:
@@ -366,6 +375,8 @@ def create_bot() -> FeedbackBot:
     @app_commands.describe(feedback_id="The ID of the feedback to retrieve")
     async def get_feedback(interaction: discord.Interaction, feedback_id: str):
         logger.info(f"/view_feedback called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}'")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         feedback = await bot.kv.get_value(feedback_id)
@@ -381,6 +392,8 @@ def create_bot() -> FeedbackBot:
     async def list_feedback(interaction: discord.Interaction, sentiment: Optional[str] = None,
                             category: Optional[str] = None):
         logger.info(f"/list_feedback called by {interaction.user} (id={interaction.user.id}) — sentiment={sentiment} category={category}")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         feedbacks = await bot.kv.get_all_feedbacks()
@@ -400,6 +413,8 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="feedback_stats", description="Get statistics about feedback")
     async def feedback_stats(interaction: discord.Interaction):
         logger.info(f"/feedback_stats called by {interaction.user} (id={interaction.user.id})")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         feedbacks = await bot.kv.get_all_feedbacks()
@@ -413,6 +428,8 @@ def create_bot() -> FeedbackBot:
     @app_commands.describe(feedback_id="The ID of the feedback to tag", tag="The tag to add")
     async def add_tag(interaction: discord.Interaction, feedback_id: str, tag: str):
         logger.info(f"/add_tag called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}' tag='{tag}'")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         success = await bot.kv.add_tag(feedback_id, tag)
@@ -426,6 +443,8 @@ def create_bot() -> FeedbackBot:
     @app_commands.describe(feedback_id="The ID of the feedback to mark as completed")
     async def mark_completed(interaction: discord.Interaction, feedback_id: str):
         logger.info(f"/mark_completed called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}'")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         success = await bot.kv.mark_completed(feedback_id, True)
@@ -439,6 +458,8 @@ def create_bot() -> FeedbackBot:
     @app_commands.describe(feedback_id="The ID of the feedback to mark as pending")
     async def mark_pending(interaction: discord.Interaction, feedback_id: str):
         logger.info(f"/mark_pending called by {interaction.user} (id={interaction.user.id}) — feedback_id='{feedback_id}'")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         success = await bot.kv.mark_completed(feedback_id, False)
@@ -451,6 +472,8 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="curseforge_stats", description="Get CurseForge statistics for king_tajin")
     async def curseforge_stats(interaction: discord.Interaction):
         logger.info(f"/curseforge_stats called by {interaction.user} (id={interaction.user.id})")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         stats = await get_curseforge_stats("king_tajin")
@@ -465,6 +488,8 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="modrinth_stats", description="Get Modrinth statistics for King_Tajin")
     async def modrinth_stats(interaction: discord.Interaction):
         logger.info(f"/modrinth_stats called by {interaction.user} (id={interaction.user.id})")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         stats = await get_modrinth_stats("King_Tajin")
@@ -477,6 +502,8 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="post_curseforge_stats", description="Manually post CurseForge stats to the stats channel")
     async def post_curseforge_stats(interaction: discord.Interaction):
         logger.info(f"/post_curseforge_stats called by {interaction.user} (id={interaction.user.id})")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
 
@@ -518,6 +545,8 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="post_modrinth_stats", description="Manually post Modrinth stats to the stats channel")
     async def post_modrinth_stats(interaction: discord.Interaction):
         logger.info(f"/post_modrinth_stats called by {interaction.user} (id={interaction.user.id})")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
 
@@ -557,6 +586,8 @@ def create_bot() -> FeedbackBot:
     @bot.tree.command(name="clear_commands", description="Clear duplicate slash commands")
     async def clear_commands(interaction: discord.Interaction):
         logger.info(f"/clear_commands called by {interaction.user} (id={interaction.user.id})")
+        if not await _check_guild(interaction):
+            return
         if not interaction.response.is_done():
             await interaction.response.defer()
         bot.tree.clear_commands(guild=None)

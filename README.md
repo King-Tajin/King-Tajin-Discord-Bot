@@ -8,12 +8,12 @@ Tajin Helper is a Discord bot with a public-facing Vagudle challenge command and
 
 ## Vagudle Challenge
 
-`/vagudle_challenge` lets anyone send a custom [Vagudle](https://vagudle.king-tajin.dev) puzzle to a friend — pick a secret word, a difficulty tier, and a guess limit, and the bot generates a shareable link that loads that exact challenge in-game.
+`/vagudle_challenge` lets anyone send a custom [Vagudle](https://vagudle.king-tajin.dev) puzzle to a friend just pick a secret word, a difficulty tier, and a guess limit, and the bot generates a shareable link that loads that exact challenge in-game.
 
-* **Word:** 4–7 letters, validated against the chosen dictionary
-* **Dictionary:** Normal (common words), Hard (uncommon words), or Extreme (full Scrabble dictionary)
-* **Guesses:** 9 or 11 attempts
-* **Works anywhere:** usable in servers, DMs, and private channels — no need to add the bot to a server
+* **Word:** 4–7 letters, validated against the chosen dictionary.
+* **Dictionary:** Normal (common words), Hard (uncommon words), or Extreme (full Scrabble dictionary).
+* **Guesses:** 9 or 11 attempts.
+* **Works anywhere:** usable in servers, DMs, and private channels.
 
 The word is encoded into the URL so the recipient can't spoil themselves by reading it.
 

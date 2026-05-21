@@ -341,17 +341,32 @@ class DictConfirmView(discord.ui.View):
         self.keep_btn.label = f"Keep {DICT_LABELS[selected_dict]}"
         self.switch_btn.label = f"Switch to {DICT_LABELS[easier_dict]}"
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        logger.error(f"DictConfirmView error: {error}")
+        try:
+            await interaction.response.send_message("Something went wrong generating the challenge. Please try again.", ephemeral=True)
+        except discord.HTTPException:
+            pass
+
     async def _send_challenge(
         self,
         interaction: discord.Interaction,
         dict_type: ChallengeDict,
     ) -> None:
-        encoded, challenge_id = encode_challenge(self.word, dict_type, self.guesses_val)
-        url = build_challenge_url(Config.VAGUDLE_URL, encoded)
-        logger.info(f"/vagudle_challenge (dict confirm): generated id={challenge_id} url={url}")
-        embed = _build_challenge_embed(self.word, dict_type, self.guesses_val, url)
-        await interaction.response.send_message(embed=embed)
-        self.stop()
+        try:
+            await interaction.response.defer()
+            encoded, challenge_id = encode_challenge(self.word, dict_type, self.guesses_val)
+            url = build_challenge_url(Config.VAGUDLE_URL, encoded)
+            logger.info(f"/vagudle_challenge (dict confirm): generated id={challenge_id} url={url}")
+            embed = _build_challenge_embed(self.word, dict_type, self.guesses_val, url)
+            await interaction.followup.send(embed=embed)
+            self.stop()
+        except Exception as e:
+            logger.error(f"DictConfirmView._send_challenge error: {e}")
+            try:
+                await interaction.followup.send("Something went wrong generating the challenge. Please try again.", ephemeral=True)
+            except discord.HTTPException:
+                pass
 
     async def on_timeout(self) -> None:
         for item in self.children:
@@ -380,14 +395,29 @@ class DictSwitchView(discord.ui.View):
             if isinstance(item, discord.ui.Button):
                 item.disabled = True
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        logger.error(f"DictSwitchView error: {error}")
+        try:
+            await interaction.response.send_message("Something went wrong generating the challenge. Please try again.", ephemeral=True)
+        except discord.HTTPException:
+            pass
+
     @discord.ui.button(style=discord.ButtonStyle.primary)
     async def use_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        encoded, challenge_id = encode_challenge(self.word, self.target_dict, self.guesses_val)
-        url = build_challenge_url(Config.VAGUDLE_URL, encoded)
-        logger.info(f"/vagudle_challenge (dict switch): generated id={challenge_id} url={url}")
-        embed = _build_challenge_embed(self.word, self.target_dict, self.guesses_val, url)
-        await interaction.response.send_message(embed=embed)
-        self.stop()
+        try:
+            await interaction.response.defer()
+            encoded, challenge_id = encode_challenge(self.word, self.target_dict, self.guesses_val)
+            url = build_challenge_url(Config.VAGUDLE_URL, encoded)
+            logger.info(f"/vagudle_challenge (dict switch): generated id={challenge_id} url={url}")
+            embed = _build_challenge_embed(self.word, self.target_dict, self.guesses_val, url)
+            await interaction.followup.send(embed=embed)
+            self.stop()
+        except Exception as e:
+            logger.error(f"DictSwitchView.use_btn error: {e}")
+            try:
+                await interaction.followup.send("Something went wrong generating the challenge. Please try again.", ephemeral=True)
+            except discord.HTTPException:
+                pass
 
 
 def create_bot() -> FeedbackBot:

@@ -14,7 +14,7 @@ from bot.utils.modrinth import get_modrinth_stats, format_number as mr_format
 from bot.utils.dm_responses import analyze_message, get_text_response, get_emoji_response, get_gif_response, \
     is_support_message, get_support_embed, is_vagudle_message, get_vagudle_embed, get_challenge_embed
 from bot.utils.challenge import (
-    encode_challenge, build_challenge_url, is_word_in_dict,
+    encode_challenge, build_challenge_url, is_word_in_dict, get_dict_hints,
     DICT_LABELS, DICT_DESCRIPTIONS, ChallengeDict,
 )
 
@@ -305,6 +305,89 @@ class FeedbackBot(commands.Bot):
     @update_modrinth_stats.before_loop
     async def before_update_modrinth_stats(self):
         await self.wait_until_ready()
+
+
+def _build_challenge_embed(
+    word: str,
+    dict_type: ChallengeDict,
+    guesses_val: int,
+    url: str,
+) -> discord.Embed:
+    embed = discord.Embed(
+        title="Share with your friends!",
+        description=f"{len(word)} letters · {DICT_LABELS[dict_type]} dictionary · {guesses_val} guesses",
+        color=discord.Color.from_rgb(80, 0, 170),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Challenge Link", value=url, inline=False)
+    embed.set_footer(text="Results won't affect your stats.")
+    return embed
+
+
+class DictConfirmView(discord.ui.View):
+    def __init__(
+        self,
+        word: str,
+        selected_dict: ChallengeDict,
+        easier_dict: ChallengeDict,
+        guesses_val: int,
+    ):
+        super().__init__(timeout=60)
+        self.word = word
+        self.selected_dict = selected_dict
+        self.easier_dict = easier_dict
+        self.guesses_val = guesses_val
+
+        self.keep_btn.label = f"Keep {DICT_LABELS[selected_dict]}"
+        self.switch_btn.label = f"Switch to {DICT_LABELS[easier_dict]}"
+
+    async def _send_challenge(
+        self,
+        interaction: discord.Interaction,
+        dict_type: ChallengeDict,
+    ) -> None:
+        encoded, challenge_id = encode_challenge(self.word, dict_type, self.guesses_val)
+        url = build_challenge_url(Config.VAGUDLE_URL, encoded)
+        logger.info(f"/vagudle_challenge (dict confirm): generated id={challenge_id} url={url}")
+        embed = _build_challenge_embed(self.word, dict_type, self.guesses_val, url)
+        await interaction.response.send_message(embed=embed)
+        self.stop()
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+    @discord.ui.button(style=discord.ButtonStyle.primary)
+    async def keep_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._send_challenge(interaction, self.selected_dict)
+
+    @discord.ui.button(style=discord.ButtonStyle.secondary)
+    async def switch_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._send_challenge(interaction, self.easier_dict)
+
+
+class DictSwitchView(discord.ui.View):
+    def __init__(self, word: str, target_dict: ChallengeDict, guesses_val: int):
+        super().__init__(timeout=60)
+        self.word = word
+        self.target_dict = target_dict
+        self.guesses_val = guesses_val
+        self.use_btn.label = f"Use {DICT_LABELS[target_dict]}"
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+
+    @discord.ui.button(style=discord.ButtonStyle.primary)
+    async def use_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        encoded, challenge_id = encode_challenge(self.word, self.target_dict, self.guesses_val)
+        url = build_challenge_url(Config.VAGUDLE_URL, encoded)
+        logger.info(f"/vagudle_challenge (dict switch): generated id={challenge_id} url={url}")
+        embed = _build_challenge_embed(self.word, self.target_dict, self.guesses_val, url)
+        await interaction.response.send_message(embed=embed)
+        self.stop()
 
 
 def create_bot() -> FeedbackBot:
@@ -600,7 +683,7 @@ def create_bot() -> FeedbackBot:
 
     @bot.tree.command(
         name="vagudle_challenge",
-        description="Create a custom Vagudle challenge link to send to someone",
+        description="Create a Vagudle challenge — the dictionary only signals word popularity, not difficulty",
     )
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -648,12 +731,41 @@ def create_bot() -> FeedbackBot:
             return
 
         dict_type: ChallengeDict = dictionary.value  # type: ignore[assignment]
+        hints = get_dict_hints(clean, dict_type)
 
         if not is_word_in_dict(clean, dict_type):
+            found_in: ChallengeDict | None = hints["found_in"]
+            if found_in:
+                await interaction.response.send_message(
+                    f"❌ `{clean}` isn't in the **{DICT_LABELS[dict_type]}** dictionary "
+                    f"({DICT_DESCRIPTIONS[dict_type].lower()}).\n"
+                    f"`{clean}` does appear in the **{DICT_LABELS[found_in]}** dictionary "
+                    f"({DICT_DESCRIPTIONS[found_in].lower()}) though.",
+                    view=DictSwitchView(clean, found_in, guesses.value),
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    f"❌ `{clean}` isn't in the **{DICT_LABELS[dict_type]}** dictionary "
+                    f"or any of the other dictionaries. Try a different word.",
+                    ephemeral=True,
+                )
+            return
+
+        easier_than: ChallengeDict | None = hints["easier_than"]
+        if easier_than:
+            logger.info(
+                f"/vagudle_challenge: '{clean}' also in easier dict '{easier_than}', prompting user"
+            )
+            view = DictConfirmView(clean, dict_type, easier_than, guesses.value)
             await interaction.response.send_message(
-                f"❌ `{clean}` isn't in the **{DICT_LABELS[dict_type]}** dictionary "
-                f"({DICT_DESCRIPTIONS[dict_type].lower()}).\n"
-                f"Try a different word or switch to a broader dictionary.",
+                f"⚠️ Heads up: `{clean}` also appears in the **{DICT_LABELS[easier_than]}** dictionary "
+                f"({DICT_DESCRIPTIONS[easier_than].lower()}).\n\n"
+                f"The dictionary doesn't affect gameplay difficulty — it only tells the player how "
+                f"common the word is. Choosing **{DICT_LABELS[easier_than]}** gives the player more "
+                f"precise information about the word's popularity.\n\n"
+                f"Which dictionary would you like to use?",
+                view=view,
                 ephemeral=True,
             )
             return
@@ -663,14 +775,7 @@ def create_bot() -> FeedbackBot:
 
         logger.info(f"/vagudle_challenge: generated id={challenge_id} url={url}")
 
-        embed = discord.Embed(
-            title="Share with your friends!",
-            description=f"{len(clean)} letters · {DICT_LABELS[dict_type]} dictionary · {guesses.value} guesses",
-            color=discord.Color.from_rgb(80, 0, 170),
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(name="Challenge Link", value=url, inline=False)
-        embed.set_footer(text="Results won't affect your stats.")
+        embed = _build_challenge_embed(clean, dict_type, guesses.value, url)
         await interaction.response.send_message(embed=embed)
 
     return bot

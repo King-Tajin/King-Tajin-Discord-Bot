@@ -5,7 +5,7 @@ import string
 import time
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 from bot.config import Config
 
@@ -13,6 +13,8 @@ _KEY: str = Config.CHALLENGE_KEY
 _KEY_BYTES: list[int] = [ord(c) for c in _KEY]
 
 ChallengeDict = Literal["normal", "hard", "full"]
+
+DICT_ORDER: list[ChallengeDict] = ["normal", "hard", "full"]
 
 DICT_LABELS = {
     "normal": "Normal",
@@ -46,6 +48,24 @@ def is_word_in_dict(word: str, dict_type: ChallengeDict) -> bool:
     if dict_type == "hard":
         return w in hard_set
     return w in full_set
+
+
+def get_dict_hints(word: str, selected: ChallengeDict) -> dict[str, Optional[ChallengeDict]]:
+    selected_idx = DICT_ORDER.index(selected)
+    in_selected = is_word_in_dict(word, selected)
+
+    if not in_selected:
+        found_in = next(
+            (d for d in DICT_ORDER if d != selected and is_word_in_dict(word, d)),
+            None,
+        )
+        return {"found_in": found_in, "easier_than": None}
+
+    easier_than = next(
+        (d for d in DICT_ORDER[:selected_idx] if is_word_in_dict(word, d)),
+        None,
+    )
+    return {"found_in": None, "easier_than": easier_than}
 
 
 def _xor_encode(input_str: str) -> str:

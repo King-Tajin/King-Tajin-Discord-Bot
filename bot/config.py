@@ -14,8 +14,6 @@ class Config:
     GUILD_ID = int(os.getenv('GUILD_ID', 0)) or None
     CURSEFORGE_API_KEY = os.getenv('CURSEFORGE_API_KEY')
     CURSEFORGE_AUTHOR_ID = os.getenv('CURSEFORGE_AUTHOR_ID')
-    WORKER_URL = os.getenv('WORKER_URL')
-    PUSH_SECRET = os.getenv('PUSH_SECRET')
     VAGUDLE_URL = "https://vagudle.king-tajin.dev"
     CHALLENGE_KEY = os.getenv('CHALLENGE_KEY', 'KTvagudle9x2challenge')
 
@@ -26,8 +24,6 @@ class Config:
             ('CLOUDFLARE_ACCOUNT_ID', cls.CLOUDFLARE_ACCOUNT_ID),
             ('CLOUDFLARE_NAMESPACE_ID', cls.CLOUDFLARE_NAMESPACE_ID),
             ('CLOUDFLARE_API_TOKEN', cls.CLOUDFLARE_API_TOKEN),
-            ('WORKER_URL', cls.WORKER_URL),
-            ('PUSH_SECRET', cls.PUSH_SECRET),
         ]
 
         missing = [name for name, value in required if not value]

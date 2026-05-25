@@ -222,6 +222,9 @@ class CloudflareD1:
             [duel_id],
         )
 
+    async def get_leaderboard(self, table: str) -> list[dict]:
+        return await self._query(f"SELECT * FROM {table}")
+
     async def get_leaderboard_entry(self, discord_id: str, table: str) -> dict | None:
         rows = await self._query(
             f"SELECT * FROM {table} WHERE discord_id = ?",

@@ -65,6 +65,7 @@ def encode_duel(word: str, difficulty: DuelDifficulty, duel_id: str, discord_id:
         "length": len(word),
         "id": duel_id,
         "discord_id": discord_id,
+        "created_at": int(time.time() * 1000),
     }
     return _xor_encode(json.dumps(payload, separators=(",", ":")))
 

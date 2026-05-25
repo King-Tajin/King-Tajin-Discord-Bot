@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 
 FIRST_RUN_LOOKBACK_HOURS = 2
 
+D1_TABLE_DUEL_RESULTS = "duel_results"
+D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
+D1_TABLE_LEADERBOARD_HARD = "leaderboard_hard"
+
 
 class CloudflareKV:
     def __init__(self, session=None):
@@ -153,3 +157,109 @@ class CloudflareKV:
             'last_updated': datetime.now(timezone.utc).isoformat()
         }
         return await self.put_value('modrinth_stats', stats_with_timestamp)
+
+
+class CloudflareD1:
+    def __init__(self, session=None):
+        self.session = session
+        self.account_id = Config.CLOUDFLARE_ACCOUNT_ID
+        self.database_id = Config.CLOUDFLARE_D1_DATABASE_ID
+        self.api_token = Config.CLOUDFLARE_API_TOKEN
+        self.base_url = (
+            f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}"
+            f"/d1/database/{self.database_id}"
+        )
+
+    @property
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json",
+        }
+
+    async def _query(self, sql: str, params: list | None = None) -> list[dict]:
+        url = f"{self.base_url}/query"
+        body: dict = {"sql": sql}
+        if params is not None:
+            body["params"] = params
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=self._headers, json=body) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("success") and data.get("result"):
+                            return data["result"][0].get("results", [])
+                    text = await response.text()
+                    logger.warning(f"D1 query failed: status={response.status} body={text[:200]}")
+                    return []
+        except Exception as e:
+            logger.error(f"D1 query error: {e}")
+            return []
+
+    async def _execute(self, sql: str, params: list | None = None) -> bool:
+        url = f"{self.base_url}/query"
+        body: dict = {"sql": sql}
+        if params is not None:
+            body["params"] = params
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=self._headers, json=body) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return bool(data.get("success"))
+                    text = await response.text()
+                    logger.warning(f"D1 execute failed: status={response.status} body={text[:200]}")
+                    return False
+        except Exception as e:
+            logger.error(f"D1 execute error: {e}")
+            return False
+
+    async def get_duel_results(self, duel_id: str) -> list[dict]:
+        return await self._query(
+            f"SELECT * FROM {D1_TABLE_DUEL_RESULTS} WHERE duel_id = ? AND completed_at IS NOT NULL",
+            [duel_id],
+        )
+
+    async def get_leaderboard_entry(self, discord_id: str, table: str) -> dict | None:
+        rows = await self._query(
+            f"SELECT * FROM {table} WHERE discord_id = ?",
+            [discord_id],
+        )
+        return rows[0] if rows else None
+
+    async def upsert_leaderboard(
+        self,
+        discord_id: str,
+        opponent_id: str,
+        won: bool,
+        table: str,
+    ) -> bool:
+        current = await self.get_leaderboard_entry(discord_id, table)
+
+        if current:
+            matches_played = current["matches_played"] + 1
+            matches_won = current["matches_won"] + (1 if won else 0)
+
+            opponents_won: list[str] = json.loads(current.get("opponents_won") or "[]")
+            opponents_lost: list[str] = json.loads(current.get("opponents_lost") or "[]")
+
+            if won:
+                if opponent_id not in opponents_won:
+                    opponents_won.append(opponent_id)
+            else:
+                if opponent_id not in opponents_lost:
+                    opponents_lost.append(opponent_id)
+
+            return await self._execute(
+                f"UPDATE {table} SET matches_played = ?, matches_won = ?, opponents_won = ?, opponents_lost = ? WHERE discord_id = ?",
+                [matches_played, matches_won, json.dumps(opponents_won), json.dumps(opponents_lost), discord_id],
+            )
+        else:
+            opponents_won_val = json.dumps([opponent_id] if won else [])
+            opponents_lost_val = json.dumps([] if won else [opponent_id])
+            return await self._execute(
+                f"INSERT INTO {table} (discord_id, matches_played, matches_won, opponents_won, opponents_lost) VALUES (?, ?, ?, ?, ?)",
+                [discord_id, 1, 1 if won else 0, opponents_won_val, opponents_lost_val],
+            )

@@ -124,92 +124,97 @@ def _format_duration(generated_at: str, completed_at: str) -> str:
         return "unknown"
 
 
-async def check_duel_completion(bot: "FeedbackBot", duel_id: str) -> None:
-    if duel_id in _processed_duels:
-        logger.debug(f"check_duel_completion: duel {duel_id} already processed, skipping")
-        return
+async def check_duel_completion(bot: "TajinHelper", duel_id: str) -> None:
+    try:
+        if duel_id in _processed_duels:
+            logger.debug(f"check_duel_completion: duel {duel_id} already processed, skipping")
+            return
 
-    results = await bot.d1.get_duel_results(duel_id)
+        results = await bot.d1.get_duel_results(duel_id)
 
-    if len(results) < 2:
-        logger.info(f"check_duel_completion: duel {duel_id} only has {len(results)} result(s), waiting for both players")
-        return
+        if len(results) < 2:
+            logger.info(f"check_duel_completion: duel {duel_id} only has {len(results)} result(s), waiting for both players")
+            return
 
-    _processed_duels.add(duel_id)
-    logger.info(f"check_duel_completion: duel {duel_id} complete, processing outcomes")
+        logger.info(f"check_duel_completion: duel {duel_id} complete, processing outcomes")
 
-    r1 = results[0]
-    r2 = results[1]
+        r1 = results[0]
+        r2 = results[1]
 
-    dict_type = r1.get("dict_type", "normal")
-    leaderboard_table = D1_TABLE_LEADERBOARD_NORMAL if dict_type == "normal" else D1_TABLE_LEADERBOARD_HARD
+        dict_type = r1.get("dict_type", "normal")
+        leaderboard_table = D1_TABLE_LEADERBOARD_NORMAL if dict_type == "normal" else D1_TABLE_LEADERBOARD_HARD
 
-    r1_duel_won, r2_duel_won = _determine_duel_outcomes(r1, r2)
-    r1_id = str(r1["discord_id"])
-    r2_id = str(r2["discord_id"])
+        r1_duel_won, r2_duel_won = _determine_duel_outcomes(r1, r2)
+        r1_id = str(r1.get("discord_id", ""))
+        r2_id = str(r2.get("discord_id", ""))
 
-    lb1_ok = await bot.d1.upsert_leaderboard(r1_id, r2_id, r1_duel_won, leaderboard_table)
-    lb2_ok = await bot.d1.upsert_leaderboard(r2_id, r1_id, r2_duel_won, leaderboard_table)
+        lb1_ok = await bot.d1.upsert_leaderboard(r1_id, r2_id, r1_duel_won, leaderboard_table)
+        lb2_ok = await bot.d1.upsert_leaderboard(r2_id, r1_id, r2_duel_won, leaderboard_table)
 
-    if not lb1_ok or not lb2_ok:
-        logger.error(f"check_duel_completion: leaderboard upsert failed for duel {duel_id}, will retry on next webhook call")
-        return
+        if not lb1_ok or not lb2_ok:
+            logger.error(f"check_duel_completion: leaderboard upsert failed for duel {duel_id}, will retry on next webhook call")
+            return
 
-    _processed_duels.add(duel_id)
-    logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
+        _processed_duels.add(duel_id)
+        logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
 
-    word = str(r1.get("word", "?"))
+        word = str(r1.get("word", "?"))
 
-    for result, opponent, duel_won, opp_duel_won in (
-        (r1, r2, r1_duel_won, r2_duel_won),
-        (r2, r1, r2_duel_won, r1_duel_won),
-    ):
-        discord_id = result.get("discord_id")
-        guesses = result.get("guesses_used", "?")
-        opp_guesses = opponent.get("guesses_used", "?")
-        opp_got_word = bool(opponent.get("won"))
-        opp_outcome = "Won" if opp_duel_won else "Lost"
+        for result, opponent, duel_won, opp_duel_won in (
+            (r1, r2, r1_duel_won, r2_duel_won),
+            (r2, r1, r2_duel_won, r1_duel_won),
+        ):
+            discord_id = result.get("discord_id")
+            guesses = result.get("guesses_used", "?")
+            opp_guesses = opponent.get("guesses_used", "?")
+            opp_got_word = bool(opponent.get("won"))
+            opp_outcome = "Won" if opp_duel_won else "Lost"
 
-        my_time = _format_duration(result.get("generated_at", ""), result.get("completed_at", ""))
-        opp_time = _format_duration(opponent.get("generated_at", ""), opponent.get("completed_at", ""))
+            my_time = _format_duration(result.get("generated_at", ""), result.get("completed_at", ""))
+            opp_time = _format_duration(opponent.get("generated_at", ""), opponent.get("completed_at", ""))
 
-        guesses_label = f"{guesses} guess{'es' if guesses != 1 else ''}"
-        opp_guesses_label = f"{opp_guesses} guess{'es' if opp_guesses != 1 else ''}" if opp_got_word else "DNF"
+            guesses_label = f"{guesses} guess{'es' if guesses != 1 else ''}"
+            opp_guesses_label = f"{opp_guesses} guess{'es' if opp_guesses != 1 else ''}" if opp_got_word else "DNF"
 
-        if duel_won and opp_duel_won:
-            outcome_line = "🤝 It's a tie!"
-            color = discord.Color.gold()
-        elif duel_won:
-            outcome_line = "🏆 You won!"
-            color = discord.Color.green()
-        else:
-            outcome_line = "💀 You lost."
-            color = discord.Color.red()
+            if duel_won and opp_duel_won:
+                outcome_line = "🤝 It's a tie!"
+                color = discord.Color.gold()
+            elif duel_won:
+                outcome_line = "🏆 You won!"
+                color = discord.Color.green()
+            else:
+                outcome_line = "💀 You lost."
+                color = discord.Color.red()
 
-        embed = discord.Embed(
-            title="⚔️ Duel Complete!",
-            description=outcome_line,
-            color=color,
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(name="Word", value=word, inline=False)
-        embed.add_field(name="Your guesses", value=guesses_label, inline=True)
-        embed.add_field(name="Your time", value=my_time, inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
-        embed.add_field(name="Opponent result", value=opp_outcome, inline=True)
-        embed.add_field(name="Opponent guesses", value=opp_guesses_label, inline=True)
-        embed.add_field(name="Opponent time", value=opp_time, inline=True)
+            embed = discord.Embed(
+                title="⚔️ Duel Complete!",
+                description=outcome_line,
+                color=color,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(name="Word", value=word, inline=False)
+            embed.add_field(name="Your guesses", value=guesses_label, inline=True)
+            embed.add_field(name="Your time", value=my_time, inline=True)
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embed.add_field(name="Opponent result", value=opp_outcome, inline=True)
+            embed.add_field(name="Opponent guesses", value=opp_guesses_label, inline=True)
+            embed.add_field(name="Opponent time", value=opp_time, inline=True)
 
-        if discord_id is None:
-            logger.warning("check_duel_completion: result missing discord_id, skipping DM")
-            continue
+            if discord_id is None:
+                logger.warning("check_duel_completion: result missing discord_id, skipping DM")
+                continue
 
-        try:
-            user = await bot.fetch_user(int(str(discord_id)))
-            await user.send(embed=embed)
-            logger.info(f"check_duel_completion: DMed result to user {discord_id}")
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
-            logger.warning(f"check_duel_completion: could not DM user {discord_id}: {e}")
+            try:
+                user = await bot.fetch_user(int(str(discord_id)))
+                await user.send(embed=embed)
+                logger.info(f"check_duel_completion: DMed result to user {discord_id}")
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                logger.warning(f"check_duel_completion: could not DM user {discord_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"check_duel_completion: unhandled exception for duel {duel_id}: {e}", exc_info=True)
+
+
 
 async def handle_duel_webhook(request: web.Request) -> web.Response:
     secret = request.headers.get("X-Duel-Secret", "")
@@ -226,14 +231,14 @@ async def handle_duel_webhook(request: web.Request) -> web.Response:
     if not duel_id:
         return web.Response(status=400, text="Missing duel_id")
 
-    bot: FeedbackBot = request.app["bot"]
+    bot: TajinHelper = request.app["bot"]
     asyncio.create_task(check_duel_completion(bot, duel_id))
 
     logger.info(f"handle_duel_webhook: queued completion check for duel {duel_id}")
     return web.Response(status=200)
 
 
-async def start_webhook_server(bot: "FeedbackBot") -> web.AppRunner:
+async def start_webhook_server(bot: "TajinHelper") -> web.AppRunner:
     app = web.Application()
     app["bot"] = bot
     app.router.add_post("/webhook/duel", handle_duel_webhook)
@@ -391,7 +396,7 @@ class DuelInviteView(discord.ui.View):
             await self._disable_buttons(interaction)
 
 
-class FeedbackBot(commands.Bot):
+class TajinHelper(commands.Bot):
     def __init__(self):
         intents = discord.Intents.all()
 
@@ -777,7 +782,7 @@ def _sort_leaderboard(rows: list[dict], sort_by: str) -> list[dict]:
     return sorted(rows, key=lambda r: (-r["matches_won"], -r["win_rate"]))
 
 
-async def _resolve_usernames(bot: "FeedbackBot", discord_ids: list[str]) -> dict[str, str]:
+async def _resolve_usernames(bot: "TajinHelper", discord_ids: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     to_fetch: list[str] = []
 
@@ -823,7 +828,7 @@ def _format_leaderboard_table(rows: list[dict], usernames: dict[str, str], start
 
 
 async def _build_leaderboard_embed(
-    bot: "FeedbackBot",
+    bot: "TajinHelper",
     all_rows: list[dict],
     page: int,
     sort_by: str,
@@ -890,7 +895,7 @@ async def _build_leaderboard_embed(
 class LeaderboardView(discord.ui.View):
     def __init__(
         self,
-        bot: "FeedbackBot",
+        bot: "TajinHelper",
         all_rows: list[dict],
         sort_by: str = "unique",
         difficulty: str = "normal",
@@ -951,9 +956,9 @@ class LeaderboardView(discord.ui.View):
         await self._update(interaction)
 
 
-def create_bot() -> FeedbackBot:
+def create_bot() -> TajinHelper:
     Config.validate()
-    bot = FeedbackBot()
+    bot = TajinHelper()
 
     @bot.event
     async def on_ready():

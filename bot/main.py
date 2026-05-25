@@ -274,6 +274,17 @@ class DuelInviteView(discord.ui.View):
 
         encoded = encode_duel(self.word, self.difficulty, self.duel_id, str(self.player1_id))
         url = build_duel_url(Config.VAGUDLE_URL, encoded)
+        generated_at = datetime.now(timezone.utc).isoformat()
+        cfg = DIFFICULTY_CONFIG[self.difficulty]
+        await interaction.client.d1.insert_duel_stub(
+            duel_id=self.duel_id,
+            discord_id=str(self.player1_id),
+            word=self.word,
+            word_length=len(self.word),
+            dict_type=cfg["dict"],
+            max_guesses=cfg["guesses"],
+            generated_at=generated_at,
+        )
 
         await interaction.response.send_message(
             f"Here's your duel link — keep it private!\n{url}",
@@ -305,6 +316,17 @@ class DuelInviteView(discord.ui.View):
 
         encoded = encode_duel(self.word, self.difficulty, self.duel_id, str(self.player2_id))
         url = build_duel_url(Config.VAGUDLE_URL, encoded)
+        generated_at = datetime.now(timezone.utc).isoformat()
+        cfg = DIFFICULTY_CONFIG[self.difficulty]
+        await interaction.client.d1.insert_duel_stub(
+            duel_id=self.duel_id,
+            discord_id=str(self.player2_id),
+            word=self.word,
+            word_length=len(self.word),
+            dict_type=cfg["dict"],
+            max_guesses=cfg["guesses"],
+            generated_at=generated_at,
+        )
 
         await interaction.response.send_message(
             f"You've accepted the duel! Here's your link — keep it private!\n{url}",

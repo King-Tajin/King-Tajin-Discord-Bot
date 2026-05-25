@@ -216,6 +216,23 @@ class CloudflareD1:
             logger.error(f"D1 execute error: {e}")
             return False
 
+    async def insert_duel_stub(
+        self,
+        duel_id: str,
+        discord_id: str,
+        word: str,
+        word_length: int,
+        dict_type: str,
+        max_guesses: int,
+        generated_at: str,
+    ) -> bool:
+        return await self._execute(
+            f"INSERT OR IGNORE INTO {D1_TABLE_DUEL_RESULTS} "
+            f"(duel_id, discord_id, word, word_length, dict_type, max_guesses, generated_at) "
+            f"VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [duel_id, discord_id, word, word_length, dict_type, max_guesses, generated_at],
+        )
+
     async def get_duel_results(self, duel_id: str) -> list[dict]:
         return await self._query(
             f"SELECT * FROM {D1_TABLE_DUEL_RESULTS} WHERE duel_id = ? AND completed_at IS NOT NULL",

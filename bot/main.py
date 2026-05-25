@@ -808,7 +808,7 @@ async def _resolve_usernames(bot: "TajinHelper", discord_ids: list[str]) -> dict
 
 
 def _format_leaderboard_table(rows: list[dict], usernames: dict[str, str], start_rank: int) -> str:
-    header = f"{'#':>2}  {'Player':<14}  {'P':>4}  {'W':>4}  {'W%':>5}  {'UW':>4}"
+    header = f"{'#':>2} {'Player':<12} {'Pld':>3} {'Won':>3} {'Win%':>4} {'UWin':>4}"
     separator = "─" * len(header)
     lines = [header, separator]
 
@@ -816,13 +816,13 @@ def _format_leaderboard_table(rows: list[dict], usernames: dict[str, str], start
         rank = start_rank + i
         did = str(row.get("discord_id", ""))
         name = usernames.get(did, f"#{did[-4:]}")
-        if len(name) > 14:
-            name = name[:13] + "…"
+        if len(name) > 12:
+            name = name[:11] + "…"
         played = int(row.get("matches_played") or 0)
         wins = int(row.get("matches_won") or 0)
         win_pct = f"{row['win_rate']:.0f}%"
         uw = row["unique_wins"]
-        lines.append(f"{rank:>2}  {name:<14}  {played:>4}  {wins:>4}  {win_pct:>5}  {uw:>4}")
+        lines.append(f"{rank:>2} {name:<12} {played:>3} {wins:>3} {win_pct:>4} {uw:>4}")
 
     return "```\n" + "\n".join(lines) + "\n```"
 
@@ -866,7 +866,7 @@ async def _build_leaderboard_embed(
         color=discord.Color.from_rgb(80, 0, 170),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text=f"{diff_label} difficulty · By {sort_label} · Page {page}/{total_pages}")
+    embed.set_footer(text=f"{diff_label} difficulty · By {sort_label} · Page {page}/{total_pages} · UWin = unique wins")
 
     if not sorted_rows:
         embed.description = "No duels played yet."

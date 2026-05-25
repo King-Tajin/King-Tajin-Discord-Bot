@@ -71,6 +71,43 @@ async def get_last_posted_stats(channel: discord.TextChannel, bot_user: discord.
     return None
 
 
+def _calc_duration_seconds(generated_at: str, completed_at: str) -> float | None:
+    try:
+        start = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+        return (end - start).total_seconds()
+    except (ValueError, TypeError):
+        return None
+
+
+def _determine_duel_outcomes(r1: dict, r2: dict) -> tuple[bool, bool]:
+    r1_got_word = bool(r1.get("won"))
+    r2_got_word = bool(r2.get("won"))
+
+    if not r1_got_word and not r2_got_word:
+        return False, False
+
+    if r1_got_word and not r2_got_word:
+        return True, False
+
+    if not r1_got_word and r2_got_word:
+        return False, True
+
+    r1_guesses = int(r1.get("guesses_used") or 0)
+    r2_guesses = int(r2.get("guesses_used") or 0)
+
+    if r1_guesses != r2_guesses:
+        return r1_guesses < r2_guesses, r2_guesses < r1_guesses
+
+    r1_time = _calc_duration_seconds(r1.get("generated_at", ""), r1.get("completed_at", ""))
+    r2_time = _calc_duration_seconds(r2.get("generated_at", ""), r2.get("completed_at", ""))
+
+    if r1_time is not None and r2_time is not None and r1_time != r2_time:
+        return r1_time < r2_time, r2_time < r1_time
+
+    return True, True
+
+
 def _format_duration(generated_at: str, completed_at: str) -> str:
     try:
         start = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -107,35 +144,52 @@ async def check_duel_completion(bot: "FeedbackBot", duel_id: str) -> None:
     dict_type = r1.get("dict_type", "normal")
     leaderboard_table = D1_TABLE_LEADERBOARD_NORMAL if dict_type == "normal" else D1_TABLE_LEADERBOARD_HARD
 
-    r1_won = bool(r1.get("won"))
-    r2_won = bool(r2.get("won"))
+    r1_duel_won, r2_duel_won = _determine_duel_outcomes(r1, r2)
     r1_id = str(r1["discord_id"])
     r2_id = str(r2["discord_id"])
 
-    await bot.d1.upsert_leaderboard(r1_id, r2_id, r1_won, leaderboard_table)
-    await bot.d1.upsert_leaderboard(r2_id, r1_id, r2_won, leaderboard_table)
+    lb1_ok = await bot.d1.upsert_leaderboard(r1_id, r2_id, r1_duel_won, leaderboard_table)
+    lb2_ok = await bot.d1.upsert_leaderboard(r2_id, r1_id, r2_duel_won, leaderboard_table)
+
+    if not lb1_ok or not lb2_ok:
+        logger.error(f"check_duel_completion: leaderboard upsert failed for duel {duel_id}, will retry on next webhook call")
+        return
+
+    _processed_duels.add(duel_id)
     logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
 
     word = str(r1.get("word", "?"))
 
-    for result, opponent in ((r1, r2), (r2, r1)):
+    for result, opponent, duel_won, opp_duel_won in (
+        (r1, r2, r1_duel_won, r2_duel_won),
+        (r2, r1, r2_duel_won, r1_duel_won),
+    ):
         discord_id = result.get("discord_id")
-        won = bool(result.get("won"))
         guesses = result.get("guesses_used", "?")
-        opp_won = bool(opponent.get("won"))
         opp_guesses = opponent.get("guesses_used", "?")
+        opp_got_word = bool(opponent.get("won"))
+        opp_outcome = "Won" if opp_duel_won else "Lost"
 
         my_time = _format_duration(result.get("generated_at", ""), result.get("completed_at", ""))
         opp_time = _format_duration(opponent.get("generated_at", ""), opponent.get("completed_at", ""))
 
         guesses_label = f"{guesses} guess{'es' if guesses != 1 else ''}"
-        opp_guesses_label = f"{opp_guesses} guess{'es' if opp_guesses != 1 else ''}"
-        opp_outcome = "Won" if opp_won else "Lost"
+        opp_guesses_label = f"{opp_guesses} guess{'es' if opp_guesses != 1 else ''}" if opp_got_word else "DNF"
+
+        if duel_won and opp_duel_won:
+            outcome_line = "🤝 It's a tie!"
+            color = discord.Color.gold()
+        elif duel_won:
+            outcome_line = "🏆 You won!"
+            color = discord.Color.green()
+        else:
+            outcome_line = "💀 You lost."
+            color = discord.Color.red()
 
         embed = discord.Embed(
             title="⚔️ Duel Complete!",
-            description="🏆 You won!" if won else "💀 You lost.",
-            color=discord.Color.green() if won else discord.Color.red(),
+            description=outcome_line,
+            color=color,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(name="Word", value=word, inline=False)
@@ -366,7 +420,7 @@ class FeedbackBot(commands.Bot):
             self.tree.clear_commands(guild=None)
             for cmd in all_commands:
                 self.tree.add_command(cmd, guild=guild)
-                if cmd.name in ("vagudle_challenge", "vagudle_duel"):
+                if cmd.name in ("vagudle_challenge", "vagudle_duel", "vagudle_leaderboard"):
                     self.tree.add_command(cmd)
             await self.tree.sync(guild=guild)
             await self.tree.sync()

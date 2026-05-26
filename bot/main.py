@@ -71,6 +71,26 @@ async def get_last_posted_stats(channel: discord.TextChannel, bot_user: discord.
     return None
 
 
+async def get_last_posted_duel_stats(channel: discord.TextChannel, bot_user: discord.ClientUser) -> Optional[dict]:
+    async for message in channel.history(limit=200):
+        if message.author != bot_user:
+            continue
+        for embed in message.embeds:
+            if embed.title and embed.title.startswith("Vagudle Duel Stats"):
+                stats = {}
+                for field in embed.fields:
+                    raw = field.value.replace("**", "").replace(",", "").strip()
+                    try:
+                        value = int(raw)
+                    except ValueError:
+                        continue
+                    if field.name == "Duels Played":
+                        stats['duels_played'] = value
+                if stats:
+                    return stats
+    return None
+
+
 def _calc_duration_seconds(generated_at: str, completed_at: str) -> float | None:
     try:
         start = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -157,6 +177,9 @@ async def check_duel_completion(bot: "TajinHelper", duel_id: str) -> None:
 
         _processed_duels.add(duel_id)
         logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
+
+        await bot.kv.increment_duels_played()
+        logger.info(f"check_duel_completion: incremented vagudle_duels_played")
 
         word = str(r1.get("word", "?"))
 
@@ -315,6 +338,8 @@ class DuelInviteView(discord.ui.View):
                 item.disabled = True
         try:
             await interaction.message.edit(view=self)
+        except discord.Forbidden:
+            pass
         except (discord.HTTPException, AttributeError) as e:
             logger.warning(f"DuelInviteView: could not disable buttons: {e}")
         self.stop()
@@ -437,6 +462,7 @@ class TajinHelper(commands.Bot):
         self.update_curseforge_stats.start()
         self.update_modrinth_stats.start()
         self.check_new_feedback.start()
+        self.update_duel_stats.start()
 
     async def close(self):
         if self._webhook_runner:
@@ -445,10 +471,82 @@ class TajinHelper(commands.Bot):
             await self.http_session.close()
         await super().close()
 
+    @tasks.loop(time=[time(hour=14, minute=45)])
+    async def update_duel_stats(self):
+        logger.info("update_duel_stats: task fired")
+        try:
+            now = datetime.now(timezone.utc)
+            if now.weekday() not in (0, 4):
+                return
+
+            if not Config.STATS_CHANNEL_ID:
+                logger.warning("update_duel_stats: STATS_CHANNEL_ID not configured")
+                return
+
+            channel = self.get_channel(int(Config.STATS_CHANNEL_ID))
+            if not isinstance(channel, discord.TextChannel):
+                logger.error(f"update_duel_stats: channel {Config.STATS_CHANNEL_ID} not found or not a text channel")
+                return
+
+            bot_user = self.user
+            if not bot_user:
+                return
+
+            kv_data = await self.kv.get_value('vagudle_duels_played')
+            duels_played = int(kv_data.get('count', 0)) if kv_data else 0
+
+            last_stats = await get_last_posted_duel_stats(channel, bot_user)
+
+            should_post = False
+            changes = []
+
+            if last_stats is None:
+                should_post = True
+                logger.info("update_duel_stats: no previous post found, posting initial stats")
+            else:
+                diff = duels_played - last_stats.get('duels_played', 0)
+                if diff != 0:
+                    should_post = True
+                    changes.append(f"{_fmt_diff(diff, str)} duels played")
+                logger.info(f"update_duel_stats: duels_diff={diff:+}")
+
+            if not should_post:
+                logger.info("update_duel_stats: no changes, skipping post")
+                return
+
+            embed = discord.Embed(
+                title="Vagudle Duel Stats Updated!",
+                color=discord.Color.from_rgb(80, 0, 170),
+                timestamp=datetime.now(timezone.utc),
+            )
+            if changes:
+                embed.description = "Changes: " + ", ".join(changes)
+            embed.add_field(name="Duels Played", value=f"**{duels_played:,}**", inline=True)
+
+            try:
+                message = await channel.send(embed=embed)
+                if hasattr(channel, 'is_news') and channel.is_news():
+                    try:
+                        await message.publish()
+                    except discord.HTTPException as e:
+                        logger.error(f"update_duel_stats: failed to publish message: {e}")
+                logger.info(f"update_duel_stats: posted to #{channel.name}")
+            except discord.Forbidden:
+                logger.error(f"update_duel_stats: no permission to post in #{channel.name}")
+            except discord.HTTPException as e:
+                logger.error(f"update_duel_stats: HTTP error posting: {e}")
+        except Exception as e:
+            logger.error(f"update_duel_stats task error: {e}")
+
+    @update_duel_stats.before_loop
+    async def before_update_duel_stats(self):
+        await self.wait_until_ready()
+
     async def cog_unload(self):
         self.update_curseforge_stats.cancel()
         self.update_modrinth_stats.cancel()
         self.check_new_feedback.cancel()
+        self.update_duel_stats.cancel()
 
     @tasks.loop(time=[time(hour=h, minute=15) for h in range(0, 24, 2)])
     async def check_new_feedback(self):
@@ -914,12 +1012,8 @@ class LeaderboardView(discord.ui.View):
         self._refresh_buttons()
 
     def _refresh_buttons(self) -> None:
-        self.sort_btn.style = (
-            discord.ButtonStyle.primary if self.sort_by == "unique" else discord.ButtonStyle.secondary
-        )
-        self.diff_btn.style = (
-            discord.ButtonStyle.primary if self.difficulty == "hard" else discord.ButtonStyle.secondary
-        )
+        self.sort_btn.label = "By unique wins" if self.sort_by == "unique" else "By total wins"
+        self.diff_btn.label = "Normal mode" if self.difficulty == "normal" else "Hard mode"
         self.prev_btn.disabled = self.page <= 1
         self.next_btn.disabled = self.page >= self.total_pages
 
@@ -933,7 +1027,7 @@ class LeaderboardView(discord.ui.View):
         self._refresh_buttons()
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="By unique wins", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="By unique wins", style=discord.ButtonStyle.secondary)
     async def sort_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         self.sort_by = "total" if self.sort_by == "unique" else "unique"
         self.page = 1

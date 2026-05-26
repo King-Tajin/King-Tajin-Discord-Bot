@@ -144,6 +144,11 @@ class CloudflareKV:
         feedback['completed'] = completed
         return await self.put_value(key, feedback)
 
+    async def increment_duels_played(self) -> bool:
+        current = await self.get_value('vagudle_duels_played')
+        count = int(current.get('count', 0)) if current else 0
+        return await self.put_value('vagudle_duels_played', {'count': count + 1})
+
     async def store_curseforge_stats(self, stats: Dict) -> bool:
         stats_with_timestamp = {
             **stats,

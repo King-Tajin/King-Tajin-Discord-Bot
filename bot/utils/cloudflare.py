@@ -244,6 +244,24 @@ class CloudflareD1:
             [duel_id],
         )
 
+    async def get_stale_duel_data(self) -> list[dict]:
+        return await self._query(
+            f"SELECT duel_id, discord_id, completed_at, generated_at, dict_type, word "
+            f"FROM {D1_TABLE_DUEL_RESULTS} "
+            f"WHERE duel_id IN ("
+            f"  SELECT DISTINCT duel_id FROM {D1_TABLE_DUEL_RESULTS} "
+            f"  WHERE completed_at IS NULL "
+            f"  AND generated_at < datetime('now', '-24 hours')"
+            f")"
+        )
+
+    async def delete_stale_null_stubs(self) -> bool:
+        return await self._execute(
+            f"DELETE FROM {D1_TABLE_DUEL_RESULTS} "
+            f"WHERE completed_at IS NULL "
+            f"AND generated_at < datetime('now', '-24 hours')"
+        )
+
     async def get_leaderboard(self, table: str) -> list[dict]:
         return await self._query(f"SELECT * FROM {table}")
 

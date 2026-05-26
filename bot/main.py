@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 FEEDBACK_LOOKBACK_HOURS = 2
 
+_STALE_DUEL_DM_BATCH = 10
 _processed_duels: set[str] = set()
 
 
@@ -142,6 +143,33 @@ def _format_duration(generated_at: str, completed_at: str) -> str:
         return f"{hours}h {minutes}m"
     except (ValueError, TypeError):
         return "unknown"
+
+
+def _build_expired_duel_embed(*, is_dnf: bool) -> discord.Embed:
+    if is_dnf:
+        embed = discord.Embed(
+            title="Duel Expired",
+            description=(
+                "Your duel link expired before you completed the game. "
+                "Your opponent's result has been removed so nothing counted against either of you.\n\n"
+                "Want to run it back? Use `/vagudle_duel` to start a fresh duel!"
+            ),
+            color=discord.Color.orange(),
+            timestamp=datetime.now(timezone.utc),
+        )
+    else:
+        embed = discord.Embed(
+            title="Duel Expired",
+            description=(
+                "You completed your duel, but your opponent's link expired before they played. "
+                "The result has been voided so nothing counted against either of you.\n\n"
+                "Want to try again? Use `/vagudle_duel` to start a fresh duel!"
+            ),
+            color=discord.Color.orange(),
+            timestamp=datetime.now(timezone.utc),
+        )
+    embed.set_footer(text="Duel links expire after 24 hours · /vagudle_duel to rematch")
+    return embed
 
 
 async def check_duel_completion(bot: "TajinHelper", duel_id: str) -> None:
@@ -463,6 +491,7 @@ class TajinHelper(commands.Bot):
         self.update_modrinth_stats.start()
         self.check_new_feedback.start()
         self.update_duel_stats.start()
+        self.cleanup_stale_duels.start()
 
     async def close(self):
         if self._webhook_runner:
@@ -547,6 +576,81 @@ class TajinHelper(commands.Bot):
         self.update_modrinth_stats.cancel()
         self.check_new_feedback.cancel()
         self.update_duel_stats.cancel()
+        self.cleanup_stale_duels.cancel()
+
+    @tasks.loop(time=[time(hour=h, minute=0) for h in [3, 9, 15, 21]])
+    async def cleanup_stale_duels(self):
+        logger.info("cleanup_stale_duels: task fired")
+        try:
+            rows = await self.d1.get_stale_duel_data()
+
+            if not rows:
+                logger.info("cleanup_stale_duels: no stale incomplete stubs found, skipping delete")
+                return
+
+            groups: dict[str, list[dict]] = {}
+            for row in rows:
+                duel_id = row.get("duel_id")
+                if duel_id:
+                    groups.setdefault(str(duel_id), []).append(row)
+
+            notify_pairs: list[tuple[dict, dict]] = []
+
+            for duel_id, duel_rows in groups.items():
+                null_rows = [r for r in duel_rows if not r.get("completed_at")]
+                completed_rows = [r for r in duel_rows if r.get("completed_at")]
+
+                if completed_rows and null_rows:
+                    completed_row = completed_rows[0]
+                    for null_row in null_rows:
+                        notify_pairs.append((null_row, completed_row))
+
+            total_duels = len(groups)
+            notify_count = len(notify_pairs)
+            silent_count = total_duels - notify_count
+            logger.info(
+                f"cleanup_stale_duels: {total_duels} duel(s) to clean — "
+                f"{notify_count} with a completed partner (will DM), "
+                f"{silent_count} fully unplayed (silent delete)"
+            )
+
+            dm_sent = 0
+            for null_row, completed_row in notify_pairs[:_STALE_DUEL_DM_BATCH]:
+                dnf_id = null_row.get("discord_id")
+                finished_id = completed_row.get("discord_id")
+
+                for discord_id, is_dnf in ((dnf_id, True), (finished_id, False)):
+                    if not discord_id:
+                        continue
+                    try:
+                        user = await self.fetch_user(int(str(discord_id)))
+                        embed = _build_expired_duel_embed(is_dnf=is_dnf)
+                        await user.send(embed=embed)
+                        dm_sent += 1
+                        logger.info(f"cleanup_stale_duels: DMed user {discord_id} (is_dnf={is_dnf})")
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                        logger.warning(f"cleanup_stale_duels: could not DM user {discord_id}: {e}")
+
+            if notify_count > _STALE_DUEL_DM_BATCH:
+                logger.warning(
+                    f"cleanup_stale_duels: {notify_count - _STALE_DUEL_DM_BATCH} notify pair(s) "
+                    f"skipped this run due to DM batch cap, will be cleaned up by the DELETE anyway"
+                )
+
+            logger.info(f"cleanup_stale_duels: sent {dm_sent} DM(s)")
+
+            deleted_ok = await self.d1.delete_stale_null_stubs()
+            if deleted_ok:
+                logger.info("cleanup_stale_duels: stale null stubs deleted successfully")
+            else:
+                logger.error("cleanup_stale_duels: DELETE query failed — stubs not removed")
+
+        except Exception as e:
+            logger.error(f"cleanup_stale_duels task error: {e}", exc_info=True)
+
+    @cleanup_stale_duels.before_loop
+    async def before_cleanup_stale_duels(self):
+        await self.wait_until_ready()
 
     @tasks.loop(time=[time(hour=h, minute=15) for h in range(0, 24, 2)])
     async def check_new_feedback(self):

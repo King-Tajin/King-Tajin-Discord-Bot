@@ -29,6 +29,7 @@ from bot.utils.duel import (
 logger = logging.getLogger(__name__)
 
 FEEDBACK_LOOKBACK_HOURS = 2
+DUEL_INVITE_EXPIRY_HOURS = 24
 
 _STALE_DUEL_DM_BATCH = 10
 _processed_duels: set[str] = set()
@@ -329,6 +330,11 @@ def _build_duel_invite_embed(
     return embed
 
 
+def _is_duel_invite_expired(message: discord.Message) -> bool:
+    age = datetime.now(timezone.utc) - message.created_at
+    return age > timedelta(hours=DUEL_INVITE_EXPIRY_HOURS)
+
+
 class DuelInviteView(discord.ui.View):
     def __init__(
         self,
@@ -338,7 +344,7 @@ class DuelInviteView(discord.ui.View):
         difficulty: DuelDifficulty,
         duel_id: str,
     ):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)
         self.player1_id = player1_id
         self.player2_id = player2_id
         self.word = word
@@ -347,11 +353,6 @@ class DuelInviteView(discord.ui.View):
         self.player1_accepted = False
         self.player2_accepted = False
         self._lock = asyncio.Lock()
-
-    async def on_timeout(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
         logger.error(f"DuelInviteView error: {error}")
@@ -372,10 +373,24 @@ class DuelInviteView(discord.ui.View):
             logger.warning(f"DuelInviteView: could not disable buttons: {e}")
         self.stop()
 
+    async def _check_expired(self, interaction: discord.Interaction) -> bool:
+        if interaction.message and _is_duel_invite_expired(interaction.message):
+            await self._disable_buttons(interaction)
+            await interaction.response.send_message(
+                "⏰ This duel invite has expired. Use `/vagudle_duel` to start a new one.",
+                ephemeral=True,
+            )
+            logger.info(f"DuelInviteView: duel {self.duel_id} invite expired, buttons disabled")
+            return True
+        return False
+
     @discord.ui.button(label="Get My Link", style=discord.ButtonStyle.primary)
     async def player1_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         if interaction.user.id != self.player1_id:
             await interaction.response.send_message("Only the challenger can use this button.", ephemeral=True)
+            return
+
+        if await self._check_expired(interaction):
             return
 
         async with self._lock:
@@ -410,6 +425,9 @@ class DuelInviteView(discord.ui.View):
     async def player2_btn(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         if interaction.user.id == self.player1_id:
             await interaction.response.send_message("You're the challenger — use the other button.", ephemeral=True)
+            return
+
+        if await self._check_expired(interaction):
             return
 
         async with self._lock:

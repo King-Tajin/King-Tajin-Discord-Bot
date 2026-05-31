@@ -56,6 +56,24 @@ class TajinHelper(commands.Bot):
         self.http_session: aiohttp.ClientSession | None = None
         self._webhook_runner = None
 
+    async def _sync_global(self) -> None:
+        app_id = self.application_id
+        if app_id is None:
+            logger.error("Cannot sync global commands: application_id is None.")
+            return
+
+        existing = await self.http.get_global_commands(app_id)
+        entry_points = [dict(c) for c in existing if c.get("type") == 4]
+
+        tree_commands = self.tree.get_commands(guild=None)
+        payload = [dict(command.to_dict(self.tree)) for command in tree_commands]
+        payload.extend(entry_points)
+
+        await self.http.bulk_upsert_global_commands(app_id, payload=payload)
+
+        if entry_points:
+            logger.info(f"_sync_global: preserved {len(entry_points)} Entry Point command(s) during sync")
+
     async def setup_hook(self):
         self.http_session = aiohttp.ClientSession()
         logger.info("Running without proxy")
@@ -85,10 +103,10 @@ class TajinHelper(commands.Bot):
                 ):
                     self.tree.add_command(cmd)
             await self.tree.sync(guild=guild)
-            await self.tree.sync()
+            await self._sync_global()
             logger.info("Synced slash commands to guild and vagudle commands globally")
         else:
-            await self.tree.sync()
+            await self._sync_global()
             logger.info("Synced slash commands globally")
 
         self.update_curseforge_stats.start()

@@ -44,7 +44,9 @@ def get_random_word(difficulty: DuelDifficulty, length: int) -> str | None:
 
 
 def _xor_encode(input_str: str) -> str:
-    byte_vals = [ord(c) ^ _KEY_BYTES[i % len(_KEY_BYTES)] for i, c in enumerate(input_str)]
+    byte_vals = [
+        ord(c) ^ _KEY_BYTES[i % len(_KEY_BYTES)] for i, c in enumerate(input_str)
+    ]
     binary = bytes(byte_vals)
     encoded = base64.urlsafe_b64encode(binary).decode("ascii")
     return encoded.rstrip("=")
@@ -56,7 +58,9 @@ def generate_duel_id() -> str:
     return rand_part + time_part
 
 
-def encode_duel(word: str, difficulty: DuelDifficulty, duel_id: str, discord_id: str) -> str:
+def encode_duel(
+    word: str, difficulty: DuelDifficulty, duel_id: str, discord_id: str
+) -> str:
     cfg = DIFFICULTY_CONFIG[difficulty]
     payload = {
         "word": word.upper(),

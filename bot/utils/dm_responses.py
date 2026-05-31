@@ -62,29 +62,29 @@ VAGUDLE_KEYWORDS = [
 ]
 
 GIF_DOMAINS = re.compile(
-    r'https?://(?:www\.)?(?:'
-    r'tenor\.com|c\.tenor\.com|media\.tenor\.com'
-    r'|giphy\.com|i\.giphy\.com|media\.giphy\.com'
-    r'|klipy\.com'
-    r')\S*',
-    re.IGNORECASE
+    r"https?://(?:www\.)?(?:"
+    r"tenor\.com|c\.tenor\.com|media\.tenor\.com"
+    r"|giphy\.com|i\.giphy\.com|media\.giphy\.com"
+    r"|klipy\.com"
+    r")\S*",
+    re.IGNORECASE,
 )
 
-CUSTOM_EMOJI_RE = re.compile(r'<a?:[a-zA-Z0-9_]+:[0-9]+>')
+CUSTOM_EMOJI_RE = re.compile(r"<a?:[a-zA-Z0-9_]+:[0-9]+>")
 
 UNICODE_EMOJI_RE = re.compile(
-    '['
-    '\U0001F000-\U0001FFFF'
-    '\U00002300-\U000027BF'
-    '\U00002900-\U00002BFF'
-    '\U0001F1E0-\U0001F1FF'
-    '\U0001F3FB-\U0001F3FF'
-    '\u20E3'
-    ']+',
-    flags=re.UNICODE
+    "["
+    "\U0001f000-\U0001ffff"
+    "\U00002300-\U000027bf"
+    "\U00002900-\U00002bff"
+    "\U0001f1e0-\U0001f1ff"
+    "\U0001f3fb-\U0001f3ff"
+    "\u20e3"
+    "]+",
+    flags=re.UNICODE,
 )
 
-RESIDUAL_RE = re.compile(r'[\uFE00-\uFE0F\u200D\uFEFF\u20D0-\u20FF\s]+')
+RESIDUAL_RE = re.compile(r"[\uFE00-\uFE0F\u200D\uFEFF\u20D0-\u20FF\s]+")
 
 GIF_EMBED_TYPES = {"gifv", "gif"}
 GIF_CONTENT_TYPES = {"image/gif", "video/mp4"}
@@ -103,19 +103,23 @@ def is_vagudle_message(message) -> bool:
     content = message.content.strip().lower()
     for keyword in VAGUDLE_KEYWORDS:
         if keyword in content:
-            logger.info(f"Vagudle keyword '{keyword}' detected in message from {message.author} (id={message.author.id})")
+            logger.info(
+                f"Vagudle keyword '{keyword}' detected in message from {message.author} (id={message.author.id})"
+            )
             return True
     return False
 
 
 def is_support_message(message) -> bool:
     content = message.content.strip()
-    if re.match(r'^https?://\S+$', content):
+    if re.match(r"^https?://\S+$", content):
         return False
     content_lower = content.lower()
     for keyword in SUPPORT_KEYWORDS:
         if keyword in content_lower:
-            logger.info(f"Support keyword '{keyword}' detected in DM from {message.author} (id={message.author.id})")
+            logger.info(
+                f"Support keyword '{keyword}' detected in DM from {message.author} (id={message.author.id})"
+            )
             return True
     return False
 
@@ -152,8 +156,12 @@ def analyze_message(message) -> tuple[bool, bool, bool]:
     if content:
         has_text = True
 
-    detected = [t for t, v in [("text", has_text), ("emoji", has_emoji), ("gif", has_gif)] if v]
-    logger.debug(f"DM from {message.author} (id={message.author.id}) contains: {detected or ['nothing']}")
+    detected = [
+        t for t, v in [("text", has_text), ("emoji", has_emoji), ("gif", has_gif)] if v
+    ]
+    logger.debug(
+        f"DM from {message.author} (id={message.author.id}) contains: {detected or ['nothing']}"
+    )
 
     return has_text, has_emoji, has_gif
 
@@ -226,17 +234,17 @@ def get_support_embed() -> discord.Embed:
     embed = discord.Embed(
         title="Need help or want to leave feedback?",
         description="You can reach out through either of these:",
-        color=0xFFD700
+        color=0xFFD700,
     )
     embed.add_field(
         name="📧 Email",
         value="[support@king-tajin.dev](mailto:support@king-tajin.dev)",
-        inline=False
+        inline=False,
     )
     embed.add_field(
-        name="🌐 Feedback Form",
-        value="https://king-tajin.dev/feedback",
-        inline=False
+        name="🌐 Feedback Form", value="https://king-tajin.dev/feedback", inline=False
     )
-    embed.set_footer(text="All feedback is reviewed and directly influences future updates!")
+    embed.set_footer(
+        text="All feedback is reviewed and directly influences future updates!"
+    )
     return embed

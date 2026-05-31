@@ -38,33 +38,45 @@ class CloudflareKV:
                     except json.JSONDecodeError:
                         logger.warning(f"KV get_value: invalid JSON for key '{key}'")
                         return None
-                logger.warning(f"KV get_value: status {response.status} for key '{key}'")
+                logger.warning(
+                    f"KV get_value: status {response.status} for key '{key}'"
+                )
                 return None
 
     async def put_value(self, key: str, value: Dict) -> bool:
         url = f"{self.base_url}/values/{key}"
 
         async with aiohttp.ClientSession() as session:
-            async with session.put(url, headers=self.headers, data=json.dumps(value)) as response:
+            async with session.put(
+                url, headers=self.headers, data=json.dumps(value)
+            ) as response:
                 ok = response.status in [200, 201]
                 if not ok:
-                    logger.warning(f"KV put_value: status {response.status} for key '{key}'")
+                    logger.warning(
+                        f"KV put_value: status {response.status} for key '{key}'"
+                    )
                 return ok
 
     async def list_keys(self, prefix: str = "", limit: int = 1000) -> List[Dict]:
         url = f"{self.base_url}/keys"
         params: dict[str, int | str] = {"limit": limit}
         if prefix:
-            params['prefix'] = prefix
+            params["prefix"] = prefix
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=self.headers, params=params) as response:
+            async with session.get(
+                url, headers=self.headers, params=params
+            ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    keys = data.get('result', [])
-                    logger.debug(f"KV list_keys: found {len(keys)} keys with prefix='{prefix}'")
+                    keys = data.get("result", [])
+                    logger.debug(
+                        f"KV list_keys: found {len(keys)} keys with prefix='{prefix}'"
+                    )
                     return keys
-                logger.warning(f"KV list_keys: status {response.status} for prefix='{prefix}'")
+                logger.warning(
+                    f"KV list_keys: status {response.status} for prefix='{prefix}'"
+                )
                 return []
 
     async def get_all_feedbacks(self, prefix: str = "feedback_") -> List[Dict]:
@@ -72,7 +84,7 @@ class CloudflareKV:
         feedbacks = []
 
         for key_info in keys:
-            key = key_info['name']
+            key = key_info["name"]
             feedback = await self.get_value(key)
             if feedback:
                 feedbacks.append(feedback)
@@ -80,58 +92,68 @@ class CloudflareKV:
         return feedbacks
 
     async def get_last_feedback_check(self) -> Optional[datetime]:
-        data = await self.get_value('_last_feedback_check')
-        if not data or 'ts' not in data:
+        data = await self.get_value("_last_feedback_check")
+        if not data or "ts" not in data:
             return None
         try:
-            return datetime.fromisoformat(data['ts'])
+            return datetime.fromisoformat(data["ts"])
         except ValueError:
             logger.warning("KV get_last_feedback_check: invalid timestamp format")
             return None
 
     async def store_last_feedback_check(self, ts: datetime) -> bool:
-        ok = await self.put_value('_last_feedback_check', {'ts': ts.isoformat()})
+        ok = await self.put_value("_last_feedback_check", {"ts": ts.isoformat()})
         if ok:
             logger.debug(f"KV stored last feedback check timestamp: {ts.isoformat()}")
         return ok
 
     async def get_new_feedbacks_since(self, since: datetime) -> List[Dict]:
         all_feedbacks = await self.get_all_feedbacks()
-        logger.debug(f"get_new_feedbacks_since: checking {len(all_feedbacks)} total feedbacks against since={since.isoformat()}")
+        logger.debug(
+            f"get_new_feedbacks_since: checking {len(all_feedbacks)} total feedbacks against since={since.isoformat()}"
+        )
 
         new = []
         skipped = 0
         for f in all_feedbacks:
-            submitted = f.get('submittedAt', '')
+            submitted = f.get("submittedAt", "")
             if not submitted:
                 skipped += 1
                 continue
             try:
-                dt = datetime.fromisoformat(submitted.replace('Z', '+00:00'))
-                logger.debug(f"  feedback '{f.get('id', '?')}' submittedAt={submitted} — {'NEW' if dt > since else 'old'}")
+                dt = datetime.fromisoformat(submitted.replace("Z", "+00:00"))
+                logger.debug(
+                    f"  feedback '{f.get('id', '?')}' submittedAt={submitted} — {'NEW' if dt > since else 'old'}"
+                )
                 if dt > since:
                     new.append(f)
             except ValueError:
-                logger.warning(f"KV get_new_feedbacks_since: unparseable timestamp '{submitted}' in feedback '{f.get('id', '?')}'")
+                logger.warning(
+                    f"KV get_new_feedbacks_since: unparseable timestamp '{submitted}' in feedback '{f.get('id', '?')}'"
+                )
                 skipped += 1
                 continue
 
         if skipped:
-            logger.warning(f"KV get_new_feedbacks_since: skipped {skipped} entries with missing/invalid timestamps")
+            logger.warning(
+                f"KV get_new_feedbacks_since: skipped {skipped} entries with missing/invalid timestamps"
+            )
 
-        logger.info(f"get_new_feedbacks_since: found {len(new)} new out of {len(all_feedbacks)} total")
-        return sorted(new, key=lambda x: x.get('submittedAt', ''))
+        logger.info(
+            f"get_new_feedbacks_since: found {len(new)} new out of {len(all_feedbacks)} total"
+        )
+        return sorted(new, key=lambda x: x.get("submittedAt", ""))
 
     async def add_tag(self, key: str, tag: str) -> bool:
         feedback = await self.get_value(key)
         if not feedback:
             return False
 
-        if 'tags' not in feedback:
-            feedback['tags'] = []
+        if "tags" not in feedback:
+            feedback["tags"] = []
 
-        if tag not in feedback['tags']:
-            feedback['tags'].append(tag)
+        if tag not in feedback["tags"]:
+            feedback["tags"].append(tag)
             return await self.put_value(key, feedback)
 
         return True
@@ -141,27 +163,27 @@ class CloudflareKV:
         if not feedback:
             return False
 
-        feedback['completed'] = completed
+        feedback["completed"] = completed
         return await self.put_value(key, feedback)
 
     async def increment_duels_played(self) -> bool:
-        current = await self.get_value('vagudle_duels_played')
-        count = int(current.get('count', 0)) if current else 0
-        return await self.put_value('vagudle_duels_played', {'count': count + 1})
+        current = await self.get_value("vagudle_duels_played")
+        count = int(current.get("count", 0)) if current else 0
+        return await self.put_value("vagudle_duels_played", {"count": count + 1})
 
     async def store_curseforge_stats(self, stats: Dict) -> bool:
         stats_with_timestamp = {
             **stats,
-            'last_updated': datetime.now(timezone.utc).isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }
-        return await self.put_value('curseforge_stats', stats_with_timestamp)
+        return await self.put_value("curseforge_stats", stats_with_timestamp)
 
     async def store_modrinth_stats(self, stats: Dict) -> bool:
         stats_with_timestamp = {
             **stats,
-            'last_updated': datetime.now(timezone.utc).isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }
-        return await self.put_value('modrinth_stats', stats_with_timestamp)
+        return await self.put_value("modrinth_stats", stats_with_timestamp)
 
 
 class CloudflareD1:
@@ -190,13 +212,17 @@ class CloudflareD1:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=self._headers, json=body) as response:
+                async with session.post(
+                    url, headers=self._headers, json=body
+                ) as response:
                     if response.status == 200:
                         data = await response.json()
                         if data.get("success") and data.get("result"):
                             return data["result"][0].get("results", [])
                     text = await response.text()
-                    logger.warning(f"D1 query failed: status={response.status} body={text[:200]}")
+                    logger.warning(
+                        f"D1 query failed: status={response.status} body={text[:200]}"
+                    )
                     return []
         except Exception as e:
             logger.error(f"D1 query error: {e}")
@@ -210,12 +236,16 @@ class CloudflareD1:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=self._headers, json=body) as response:
+                async with session.post(
+                    url, headers=self._headers, json=body
+                ) as response:
                     if response.status == 200:
                         data = await response.json()
                         return bool(data.get("success"))
                     text = await response.text()
-                    logger.warning(f"D1 execute failed: status={response.status} body={text[:200]}")
+                    logger.warning(
+                        f"D1 execute failed: status={response.status} body={text[:200]}"
+                    )
                     return False
         except Exception as e:
             logger.error(f"D1 execute error: {e}")
@@ -235,7 +265,15 @@ class CloudflareD1:
             f"INSERT OR IGNORE INTO {D1_TABLE_DUEL_RESULTS} "
             f"(duel_id, discord_id, word, word_length, dict_type, max_guesses, generated_at) "
             f"VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [duel_id, discord_id, word, word_length, dict_type, max_guesses, generated_at],
+            [
+                duel_id,
+                discord_id,
+                word,
+                word_length,
+                dict_type,
+                max_guesses,
+                generated_at,
+            ],
         )
 
     async def get_duel_results(self, duel_id: str) -> list[dict]:
@@ -286,7 +324,9 @@ class CloudflareD1:
             matches_won = current["matches_won"] + (1 if won else 0)
 
             opponents_won: list[str] = json.loads(current.get("opponents_won") or "[]")
-            opponents_lost: list[str] = json.loads(current.get("opponents_lost") or "[]")
+            opponents_lost: list[str] = json.loads(
+                current.get("opponents_lost") or "[]"
+            )
 
             if won:
                 if opponent_id not in opponents_won:
@@ -297,7 +337,13 @@ class CloudflareD1:
 
             return await self._execute(
                 f"UPDATE {table} SET matches_played = ?, matches_won = ?, opponents_won = ?, opponents_lost = ? WHERE discord_id = ?",
-                [matches_played, matches_won, json.dumps(opponents_won), json.dumps(opponents_lost), discord_id],
+                [
+                    matches_played,
+                    matches_won,
+                    json.dumps(opponents_won),
+                    json.dumps(opponents_lost),
+                    discord_id,
+                ],
             )
         else:
             opponents_won_val = json.dumps([opponent_id] if won else [])

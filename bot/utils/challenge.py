@@ -50,7 +50,9 @@ def is_word_in_dict(word: str, dict_type: ChallengeDict) -> bool:
     return w in full_set
 
 
-def get_dict_hints(word: str, selected: ChallengeDict) -> dict[str, Optional[ChallengeDict]]:
+def get_dict_hints(
+    word: str, selected: ChallengeDict
+) -> dict[str, Optional[ChallengeDict]]:
     selected_idx = DICT_ORDER.index(selected)
     in_selected = is_word_in_dict(word, selected)
 
@@ -69,7 +71,9 @@ def get_dict_hints(word: str, selected: ChallengeDict) -> dict[str, Optional[Cha
 
 
 def _xor_encode(input_str: str) -> str:
-    byte_vals = [ord(c) ^ _KEY_BYTES[i % len(_KEY_BYTES)] for i, c in enumerate(input_str)]
+    byte_vals = [
+        ord(c) ^ _KEY_BYTES[i % len(_KEY_BYTES)] for i, c in enumerate(input_str)
+    ]
     binary = bytes(byte_vals)
     encoded = base64.urlsafe_b64encode(binary).decode("ascii")
     return encoded.rstrip("=")
@@ -81,7 +85,9 @@ def _generate_id() -> str:
     return rand_part + time_part
 
 
-def encode_challenge(word: str, dict_type: ChallengeDict, guesses: int) -> tuple[str, str]:
+def encode_challenge(
+    word: str, dict_type: ChallengeDict, guesses: int
+) -> tuple[str, str]:
     challenge_id = _generate_id()
     config = {
         "word": word.upper(),

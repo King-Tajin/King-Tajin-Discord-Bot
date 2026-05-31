@@ -6,6 +6,8 @@ from typing import Optional, TYPE_CHECKING
 import discord
 from discord import app_commands
 
+from bot.config import Config
+
 from bot.utils.duel import (
     DIFFICULTY_LABELS,
     DuelDifficulty,
@@ -158,7 +160,7 @@ def setup(bot: TajinHelper) -> None:
                         f"/vagudle_duel_activity: detected DM, pre-assigned player2={player2_id} ({opponent_name})"
                     )
 
-        app_id = interaction.client.application_id
+        app_id = Config.ACTIVITY_APP_ID
         if app_id is None:
             await interaction.response.send_message("Bot is not ready yet. Please try again.", ephemeral=True)
             return

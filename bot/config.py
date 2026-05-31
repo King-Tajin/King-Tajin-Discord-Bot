@@ -17,9 +17,10 @@ class Config:
     CURSEFORGE_API_KEY = os.getenv("CURSEFORGE_API_KEY")
     CURSEFORGE_AUTHOR_ID = os.getenv("CURSEFORGE_AUTHOR_ID")
     VAGUDLE_URL = "https://vagudle.king-tajin.dev"
-    CHALLENGE_KEY = os.getenv("CHALLENGE_KEY", "KTvagudle9x2challenge")
+    CHALLENGE_KEY = os.getenv("CHALLENGE_KEY", "test")
     DUEL_WEBHOOK_SECRET = os.getenv("DUEL_WEBHOOK_SECRET")
     DUEL_WEBHOOK_PORT = int(os.getenv("DUEL_WEBHOOK_PORT", 8079))
+    ACTIVITY_APP_ID = os.getenv("CURSEFORGE_AUTHOR_ID")
 
     @classmethod
     def validate(cls):
@@ -29,6 +30,7 @@ class Config:
             ("CLOUDFLARE_NAMESPACE_ID", cls.CLOUDFLARE_NAMESPACE_ID),
             ("CLOUDFLARE_API_TOKEN", cls.CLOUDFLARE_API_TOKEN),
             ("DUEL_WEBHOOK_SECRET", cls.DUEL_WEBHOOK_SECRET),
+            ("ACTIVITY_APP_ID", cls.ACTIVITY_APP_ID),
         ]
 
         missing = [name for name, value in required if not value]

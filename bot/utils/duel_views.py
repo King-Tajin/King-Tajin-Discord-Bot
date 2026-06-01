@@ -84,13 +84,9 @@ def _is_duel_invite_expired(message: discord.Message) -> bool:
     return age > timedelta(hours=DUEL_INVITE_EXPIRY_HOURS)
 
 
-def _get_activity_channel(
-    interaction: discord.Interaction,
-) -> discord.VoiceChannel | discord.StageChannel | discord.DMChannel | None:
+def _get_activity_channel_id(interaction: discord.Interaction) -> int | None:
     if interaction.guild is None:
-        if isinstance(interaction.channel, discord.DMChannel):
-            return interaction.channel
-        return None
+        return interaction.channel_id
 
     member = interaction.guild.get_member(interaction.user.id)
     if member is None:
@@ -101,12 +97,12 @@ def _get_activity_channel(
     channel = getattr(voice_state, "channel", None)
     if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
         return None
-    return channel
+    return channel.id
 
 
 async def _create_activity_invite(
     interaction: discord.Interaction,
-    channel: discord.VoiceChannel | discord.StageChannel | discord.DMChannel,
+    channel_id: int,
     application_id: int,
 ) -> str | None:
     try:
@@ -114,7 +110,7 @@ async def _create_activity_invite(
             Route(
                 "POST",
                 "/channels/{channel_id}/invites",
-                channel_id=channel.id,
+                channel_id=channel_id,
             ),
             json={
                 "max_age": DUEL_INVITE_EXPIRY_HOURS * 3600,
@@ -125,7 +121,7 @@ async def _create_activity_invite(
         return invite_data["code"]
     except Exception as e:
         logger.error(
-            f"_create_activity_invite: failed for channel {channel.id}: {e}"
+            f"_create_activity_invite: failed for channel {channel_id}: {e}"
         )
         return None
 
@@ -348,8 +344,8 @@ class DuelActivityView(discord.ui.View):
         interaction: discord.Interaction,
         discord_id: int,
     ) -> None:
-        channel = _get_activity_channel(interaction)
-        if channel is None:
+        channel_id = _get_activity_channel_id(interaction)
+        if channel_id is None:
             await interaction.response.send_message(
                 "❌ You need to be in a voice channel or DM call to launch the activity.",
                 ephemeral=True,
@@ -357,7 +353,7 @@ class DuelActivityView(discord.ui.View):
             return
 
         invite_code = await _create_activity_invite(
-            interaction, channel, self.application_id
+            interaction, channel_id, self.application_id
         )
         if invite_code is None:
             await interaction.response.send_message(
@@ -408,7 +404,7 @@ class DuelActivityView(discord.ui.View):
         )
         logger.info(
             f"DuelActivityView: user {discord_id} got activity invite {invite_code} "
-            f"for duel {self.duel_id} in channel {channel.id}"
+            f"for duel {self.duel_id} in channel {channel_id}"
         )
 
     @discord.ui.button(label="Open Activity", style=discord.ButtonStyle.primary)

@@ -20,7 +20,7 @@ class Config:
     CHALLENGE_KEY = os.getenv("CHALLENGE_KEY", "test")
     DUEL_WEBHOOK_SECRET = os.getenv("DUEL_WEBHOOK_SECRET")
     DUEL_WEBHOOK_PORT = int(os.getenv("DUEL_WEBHOOK_PORT", 8079))
-    ACTIVITY_APP_ID = os.getenv("CURSEFORGE_AUTHOR_ID")
+    ACTIVITY_APP_ID = os.getenv("ACTIVITY_APP_ID")
 
     @classmethod
     def validate(cls):

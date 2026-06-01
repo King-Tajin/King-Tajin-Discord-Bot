@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import discord
+from discord.http import Route
 
 from bot.config import Config
 from bot.utils.duel import (
@@ -73,7 +74,7 @@ def build_duel_activity_embed(
     embed.add_field(name="Word Length", value=f"{word_length} letters", inline=True)
     embed.add_field(name="Guesses", value=str(guesses), inline=True)
     embed.set_footer(
-        text="Discord will prompt you to join a voice channel · Expires in 24 hours"
+        text="Join a voice channel first, then click Open Activity · Expires in 24 hours"
     )
     return embed
 
@@ -81,6 +82,45 @@ def build_duel_activity_embed(
 def _is_duel_invite_expired(message: discord.Message) -> bool:
     age = datetime.now(timezone.utc) - message.created_at
     return age > timedelta(hours=DUEL_INVITE_EXPIRY_HOURS)
+
+
+def _get_voice_channel(interaction: discord.Interaction) -> discord.VoiceChannel | None:
+    if interaction.guild is None:
+        return None
+    member = interaction.guild.get_member(interaction.user.id)
+    if member is None:
+        return None
+    voice_state = getattr(member, "voice", None)
+    if voice_state is None:
+        return None
+    channel = getattr(voice_state, "channel", None)
+    if not isinstance(channel, discord.VoiceChannel):
+        return None
+    return channel
+
+
+async def _create_activity_invite(
+    interaction: discord.Interaction,
+    voice_channel: discord.VoiceChannel,
+    application_id: int,
+) -> str | None:
+    try:
+        invite_data = await interaction.client.http.request(
+            Route(
+                "POST",
+                "/channels/{channel_id}/invites",
+                channel_id=voice_channel.id,
+            ),
+            json={
+                "max_age": DUEL_INVITE_EXPIRY_HOURS * 3600,
+                "target_type": 2,
+                "target_application_id": str(application_id),
+            },
+        )
+        return invite_data["code"]
+    except Exception as e:
+        logger.error(f"_create_activity_invite: failed for channel {voice_channel.id}: {e}")
+        return None
 
 
 class DuelInviteView(discord.ui.View):
@@ -296,21 +336,75 @@ class DuelActivityView(discord.ui.View):
             return True
         return False
 
-    def _make_launch_view(self, encoded: str) -> discord.ui.View:
-        activity_url = (
-            f"https://discord.com/activities/{self.application_id}?duel={encoded}"
+    async def _launch_activity(
+        self,
+        interaction: discord.Interaction,
+        discord_id: int,
+    ) -> None:
+        voice_channel = _get_voice_channel(interaction)
+        if voice_channel is None:
+            await interaction.response.send_message(
+                "❌ You need to be in a voice channel to launch the activity.",
+                ephemeral=True,
+            )
+            return
+
+        invite_code = await _create_activity_invite(
+            interaction, voice_channel, self.application_id
         )
-        view = discord.ui.View()
-        view.add_item(
+        if invite_code is None:
+            await interaction.response.send_message(
+                "❌ Failed to create the activity invite. Please try again.",
+                ephemeral=True,
+            )
+            return
+
+        cfg = DIFFICULTY_CONFIG[self.difficulty]
+        generated_at = datetime.now(timezone.utc).isoformat()
+
+        duel_data = {
+            "word": self.word,
+            "difficulty": self.difficulty,
+            "duel_id": self.duel_id,
+            "discord_id": str(discord_id),
+            "dict_type": cfg["dict"],
+            "max_guesses": cfg["guesses"],
+            "word_length": len(self.word),
+            "generated_at": generated_at,
+        }
+
+        await interaction.client.kv.store_activity_duel(invite_code, duel_data)
+        await interaction.client.d1.insert_duel_stub(
+            duel_id=self.duel_id,
+            discord_id=str(discord_id),
+            word=self.word,
+            word_length=len(self.word),
+            dict_type=cfg["dict"],
+            max_guesses=cfg["guesses"],
+            generated_at=generated_at,
+        )
+
+        invite_url = f"https://discord.gg/{invite_code}"
+        launch_view = discord.ui.View()
+        launch_view.add_item(
             discord.ui.Button(
                 style=discord.ButtonStyle.link,
-                label="▶ Launch Activity",
-                url=activity_url,
+                label="▶ Open Activity",
+                url=invite_url,
             )
         )
-        return view
 
-    @discord.ui.button(label="Get My Link", style=discord.ButtonStyle.primary)
+        await interaction.response.send_message(
+            "Click below to open the activity in your voice channel!",
+            view=launch_view,
+            ephemeral=True,
+        )
+        logger.info(
+            f"DuelActivityView: user {discord_id} got activity invite {invite_code} "
+            f"for duel {self.duel_id} in channel {voice_channel.id}"
+        )
+
+    @discord.ui.button(label="Open Activity", style=discord.ButtonStyle.primary)
     async def player1_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
@@ -326,39 +420,17 @@ class DuelActivityView(discord.ui.View):
         async with self._lock:
             if self.player1_accepted:
                 await interaction.response.send_message(
-                    "You've already generated your link.", ephemeral=True
+                    "You've already launched the activity.", ephemeral=True
                 )
                 return
             self.player1_accepted = True
 
-        encoded = encode_duel(
-            self.word, self.difficulty, self.duel_id, str(self.player1_id)
-        )
-        generated_at = datetime.now(timezone.utc).isoformat()
-        cfg = DIFFICULTY_CONFIG[self.difficulty]
-        await interaction.client.d1.insert_duel_stub(
-            duel_id=self.duel_id,
-            discord_id=str(self.player1_id),
-            word=self.word,
-            word_length=len(self.word),
-            dict_type=cfg["dict"],
-            max_guesses=cfg["guesses"],
-            generated_at=generated_at,
-        )
-
-        await interaction.response.send_message(
-            "Click the button below to launch the activity in your voice channel!",
-            view=self._make_launch_view(encoded),
-            ephemeral=True,
-        )
-        logger.info(
-            f"DuelActivityView: player1 {self.player1_id} got activity link for duel {self.duel_id}"
-        )
+        await self._launch_activity(interaction, self.player1_id)
 
         if self.player1_accepted and self.player2_accepted:
             await self._disable_buttons(interaction)
 
-    @discord.ui.button(label="Accept Duel", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Accept & Open Activity", style=discord.ButtonStyle.success)
     async def player2_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
@@ -389,29 +461,7 @@ class DuelActivityView(discord.ui.View):
 
             self.player2_accepted = True
 
-        encoded = encode_duel(
-            self.word, self.difficulty, self.duel_id, str(self.player2_id)
-        )
-        generated_at = datetime.now(timezone.utc).isoformat()
-        cfg = DIFFICULTY_CONFIG[self.difficulty]
-        await interaction.client.d1.insert_duel_stub(
-            duel_id=self.duel_id,
-            discord_id=str(self.player2_id),
-            word=self.word,
-            word_length=len(self.word),
-            dict_type=cfg["dict"],
-            max_guesses=cfg["guesses"],
-            generated_at=generated_at,
-        )
-
-        await interaction.response.send_message(
-            "You've accepted the duel! Click the button below to launch the activity in your voice channel!",
-            view=self._make_launch_view(encoded),
-            ephemeral=True,
-        )
-        logger.info(
-            f"DuelActivityView: player2 {self.player2_id} got activity link for duel {self.duel_id}"
-        )
+        await self._launch_activity(interaction, self.player2_id)
 
         if self.player1_accepted and self.player2_accepted:
             await self._disable_buttons(interaction)

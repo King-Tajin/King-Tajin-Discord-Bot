@@ -13,6 +13,8 @@ D1_TABLE_DUEL_RESULTS = "duel_results"
 D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
 D1_TABLE_LEADERBOARD_HARD = "leaderboard_hard"
 
+ACTIVITY_DUEL_TTL = 86400
+
 
 class CloudflareKV:
     def __init__(self, session=None):
@@ -56,6 +58,24 @@ class CloudflareKV:
                         f"KV put_value: status {response.status} for key '{key}'"
                     )
                 return ok
+
+    async def store_activity_duel(self, invite_code: str, duel_data: Dict) -> bool:
+        url = f"{self.base_url}/values/activity_duel:{invite_code}"
+        params = {"expiration_ttl": ACTIVITY_DUEL_TTL}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                url, headers=self.headers, params=params, data=json.dumps(duel_data)
+            ) as response:
+                ok = response.status in [200, 201]
+                if not ok:
+                    logger.warning(
+                        f"KV store_activity_duel: status {response.status} for invite '{invite_code}'"
+                    )
+                return ok
+
+    async def get_activity_duel(self, invite_code: str) -> Optional[Dict]:
+        return await self.get_value(f"activity_duel:{invite_code}")
 
     async def list_keys(self, prefix: str = "", limit: int = 1000) -> List[Dict]:
         url = f"{self.base_url}/keys"

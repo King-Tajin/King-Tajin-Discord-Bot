@@ -74,7 +74,7 @@ def build_duel_activity_embed(
     embed.add_field(name="Word Length", value=f"{word_length} letters", inline=True)
     embed.add_field(name="Guesses", value=str(guesses), inline=True)
     embed.set_footer(
-        text="Join a voice channel first, then click Open Activity · Expires in 24 hours"
+        text="Join a voice channel or DM call first, then click Open Activity · Expires in 24 hours"
     )
     return embed
 
@@ -84,9 +84,14 @@ def _is_duel_invite_expired(message: discord.Message) -> bool:
     return age > timedelta(hours=DUEL_INVITE_EXPIRY_HOURS)
 
 
-def _get_voice_channel(interaction: discord.Interaction) -> discord.VoiceChannel | None:
+def _get_activity_channel(
+    interaction: discord.Interaction,
+) -> discord.VoiceChannel | discord.StageChannel | discord.DMChannel | None:
     if interaction.guild is None:
+        if isinstance(interaction.channel, discord.DMChannel):
+            return interaction.channel
         return None
+
     member = interaction.guild.get_member(interaction.user.id)
     if member is None:
         return None
@@ -94,14 +99,14 @@ def _get_voice_channel(interaction: discord.Interaction) -> discord.VoiceChannel
     if voice_state is None:
         return None
     channel = getattr(voice_state, "channel", None)
-    if not isinstance(channel, discord.VoiceChannel):
+    if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
         return None
     return channel
 
 
 async def _create_activity_invite(
     interaction: discord.Interaction,
-    voice_channel: discord.VoiceChannel,
+    channel: discord.VoiceChannel | discord.StageChannel | discord.DMChannel,
     application_id: int,
 ) -> str | None:
     try:
@@ -109,7 +114,7 @@ async def _create_activity_invite(
             Route(
                 "POST",
                 "/channels/{channel_id}/invites",
-                channel_id=voice_channel.id,
+                channel_id=channel.id,
             ),
             json={
                 "max_age": DUEL_INVITE_EXPIRY_HOURS * 3600,
@@ -119,7 +124,9 @@ async def _create_activity_invite(
         )
         return invite_data["code"]
     except Exception as e:
-        logger.error(f"_create_activity_invite: failed for channel {voice_channel.id}: {e}")
+        logger.error(
+            f"_create_activity_invite: failed for channel {channel.id}: {e}"
+        )
         return None
 
 
@@ -341,16 +348,16 @@ class DuelActivityView(discord.ui.View):
         interaction: discord.Interaction,
         discord_id: int,
     ) -> None:
-        voice_channel = _get_voice_channel(interaction)
-        if voice_channel is None:
+        channel = _get_activity_channel(interaction)
+        if channel is None:
             await interaction.response.send_message(
-                "❌ You need to be in a voice channel to launch the activity.",
+                "❌ You need to be in a voice channel or DM call to launch the activity.",
                 ephemeral=True,
             )
             return
 
         invite_code = await _create_activity_invite(
-            interaction, voice_channel, self.application_id
+            interaction, channel, self.application_id
         )
         if invite_code is None:
             await interaction.response.send_message(
@@ -395,13 +402,13 @@ class DuelActivityView(discord.ui.View):
         )
 
         await interaction.response.send_message(
-            "Click below to open the activity in your voice channel!",
+            "Click below to open the activity!",
             view=launch_view,
             ephemeral=True,
         )
         logger.info(
             f"DuelActivityView: user {discord_id} got activity invite {invite_code} "
-            f"for duel {self.duel_id} in channel {voice_channel.id}"
+            f"for duel {self.duel_id} in channel {channel.id}"
         )
 
     @discord.ui.button(label="Open Activity", style=discord.ButtonStyle.primary)

@@ -86,7 +86,7 @@ def _is_duel_invite_expired(message: discord.Message) -> bool:
 
 def _get_activity_channel_id(interaction: discord.Interaction) -> int | None:
     if interaction.guild is None:
-        return interaction.channel_id
+        return None
 
     member = interaction.guild.get_member(interaction.user.id)
     if member is None:
@@ -104,7 +104,7 @@ async def _create_activity_invite(
     interaction: discord.Interaction,
     channel_id: int,
     application_id: int,
-) -> str | None:
+) -> tuple[str, None] | tuple[None, str]:
     try:
         invite_data = await interaction.client.http.request(
             Route(
@@ -118,12 +118,15 @@ async def _create_activity_invite(
                 "target_application_id": str(application_id),
             },
         )
-        return invite_data["code"]
+        return invite_data["code"], None
+    except discord.HTTPException as e:
+        reason = f"Discord error {e.status} (code {e.code}): {e.text}"
+        logger.error(f"_create_activity_invite: failed for channel {channel_id}: {reason}")
+        return None, reason
     except Exception as e:
-        logger.error(
-            f"_create_activity_invite: failed for channel {channel_id}: {e}"
-        )
-        return None
+        reason = str(e)
+        logger.error(f"_create_activity_invite: unexpected error for channel {channel_id}: {reason}")
+        return None, reason
 
 
 class DuelInviteView(discord.ui.View):
@@ -346,18 +349,24 @@ class DuelActivityView(discord.ui.View):
     ) -> None:
         channel_id = _get_activity_channel_id(interaction)
         if channel_id is None:
-            await interaction.response.send_message(
-                "❌ You need to be in a voice channel or DM call to launch the activity.",
-                ephemeral=True,
-            )
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "❌ Activities can't be launched from a DM — Discord doesn't allow bots to create activity invites for DM calls. Join a server voice channel and use the command there instead.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    "❌ You need to be in a voice channel to launch the activity.",
+                    ephemeral=True,
+                )
             return
 
-        invite_code = await _create_activity_invite(
+        invite_code, invite_error = await _create_activity_invite(
             interaction, channel_id, self.application_id
         )
         if invite_code is None:
             await interaction.response.send_message(
-                "❌ Failed to create the activity invite. Please try again.",
+                f"❌ Failed to create the activity invite: {invite_error}",
                 ephemeral=True,
             )
             return

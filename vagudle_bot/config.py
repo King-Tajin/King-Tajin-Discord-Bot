@@ -11,5 +11,5 @@ class Config:
     @classmethod
     def validate(cls):
         if not cls.BOT_TOKEN:
-            raise ValueError("Missing required configuration: DM_BOT_TOKEN")
+            raise ValueError("Missing required configuration: VAGUDLE_BOT_TOKEN")
         return True

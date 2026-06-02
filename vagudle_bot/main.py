@@ -1,12 +1,7 @@
-import asyncio
 import logging
 import discord
-from bot.config import Config
+from vagudle_bot.config import Config
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 intents = discord.Intents.default()
@@ -26,11 +21,12 @@ async def on_ready():
     logger.info("Status set")
 
 
-async def main():
+async def start():
     Config.validate()
     async with client:
         await client.start(Config.BOT_TOKEN)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import asyncio
+    asyncio.run(start())

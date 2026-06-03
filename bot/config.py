@@ -21,6 +21,8 @@ class Config:
     DUEL_WEBHOOK_SECRET = os.getenv("DUEL_WEBHOOK_SECRET")
     DUEL_WEBHOOK_PORT = int(os.getenv("DUEL_WEBHOOK_PORT", 8079))
     ACTIVITY_APP_ID = os.getenv("ACTIVITY_APP_ID")
+    VAGUDLE_WORKER_URL = os.getenv("VAGUDLE_WORKER_URL")
+    VAGUDLE_WORKER_SECRET = os.getenv("VAGUDLE_WORKER_SECRET")
 
     @classmethod
     def validate(cls):

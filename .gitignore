@@ -39,3 +39,4 @@ wheels/
 Thumbs.db
 /pi-stats/.wrangler/
 /.wrangler/
+/vagudle_bot/.wrangler/

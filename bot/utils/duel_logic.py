@@ -106,6 +106,34 @@ def build_expired_duel_embed(*, is_dnf: bool) -> discord.Embed:
     return embed
 
 
+async def send_dm_with_fallback(
+    bot: TajinHelper,
+    user_id: int,
+    embed: discord.Embed,
+) -> None:
+    if bot.dm_client is not None:
+        try:
+            result = await bot.dm_client.send_dm(user_id, embed=dict(embed.to_dict()))
+            if result.get("success"):
+                logger.info(
+                    f"send_dm_with_fallback: sent via vagudle bot to {user_id}"
+                )
+                return
+            logger.warning(
+                f"send_dm_with_fallback: vagudle bot failed for {user_id}: "
+                f"{result.get('error')} — falling back to main bot"
+            )
+        except Exception as e:
+            logger.warning(
+                f"send_dm_with_fallback: vagudle bot exception for {user_id}: "
+                f"{e} — falling back to main bot"
+            )
+
+    user = await bot.fetch_user(user_id)
+    await user.send(embed=embed)
+    logger.info(f"send_dm_with_fallback: sent via main bot to {user_id}")
+
+
 async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
     try:
         if duel_id in _processed_duels:
@@ -218,9 +246,10 @@ async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
                 continue
 
             try:
-                user = await bot.fetch_user(int(str(discord_id)))
-                await user.send(embed=embed)
-                logger.info(f"check_duel_completion: DMed result to user {discord_id}")
+                await send_dm_with_fallback(bot, int(str(discord_id)), embed)
+                logger.info(
+                    f"check_duel_completion: DMed result to user {discord_id}"
+                )
             except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
                 logger.warning(
                     f"check_duel_completion: could not DM user {discord_id}: {e}"

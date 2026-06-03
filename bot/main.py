@@ -16,7 +16,11 @@ from bot.utils.embeds import (
     create_modrinth_embed,
     create_new_feedback_embed,
 )
-from bot.utils.duel_logic import start_webhook_server, build_expired_duel_embed
+from bot.utils.duel_logic import (
+    start_webhook_server,
+    build_expired_duel_embed,
+    send_dm_with_fallback,
+)
 from bot.utils.stats_helpers import (
     fmt_diff,
     get_last_posted_duel_stats,
@@ -33,6 +37,7 @@ from bot.utils.dm_responses import (
     get_vagudle_embed,
     get_challenge_embed,
 )
+from vagudle_bot.webhook_client import DMWebhookClient
 
 import bot.commands.challenge as cmd_challenge
 import bot.commands.duel as cmd_duel
@@ -54,6 +59,7 @@ class TajinHelper(commands.Bot):
         self.kv: CloudflareKV | None = None
         self.d1: CloudflareD1 | None = None
         self.http_session: aiohttp.ClientSession | None = None
+        self.dm_client: DMWebhookClient | None = None
         self._webhook_runner = None
 
     async def setup_hook(self):
@@ -62,6 +68,16 @@ class TajinHelper(commands.Bot):
 
         self.kv = CloudflareKV(session=self.http_session)
         self.d1 = CloudflareD1(session=self.http_session)
+
+        if Config.VAGUDLE_WORKER_URL and Config.VAGUDLE_WORKER_SECRET:
+            self.dm_client = DMWebhookClient(
+                Config.VAGUDLE_WORKER_URL, Config.VAGUDLE_WORKER_SECRET
+            )
+            logger.info("Vagudle bot DM webhook configured")
+        else:
+            logger.warning(
+                "VAGUDLE_WORKER_URL or VAGUDLE_WORKER_SECRET not set — DMs will use main bot only"
+            )
 
         self._webhook_runner = await start_webhook_server(self)
 
@@ -232,9 +248,8 @@ class TajinHelper(commands.Bot):
                     if not discord_id:
                         continue
                     try:
-                        user = await self.fetch_user(int(str(discord_id)))
                         embed = build_expired_duel_embed(is_dnf=is_dnf)
-                        await user.send(embed=embed)
+                        await send_dm_with_fallback(self, int(str(discord_id)), embed)
                         dm_sent += 1
                         logger.info(
                             f"cleanup_stale_duels: DMed user {discord_id} (is_dnf={is_dnf})"

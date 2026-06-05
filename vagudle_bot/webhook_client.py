@@ -1,10 +1,15 @@
 import hashlib
 import hmac
 import json
+import logging
 import time
 from typing import Optional
 
 import aiohttp
+
+logger = logging.getLogger(__name__)
+
+_REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 
 class DMWebhookClient:
@@ -36,7 +41,7 @@ class DMWebhookClient:
         body = json.dumps(payload)
         signature, timestamp = self._sign(body)
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=_REQUEST_TIMEOUT) as session:
             async with session.post(
                 self.url,
                 data=body,
@@ -46,4 +51,19 @@ class DMWebhookClient:
                     "X-Timestamp": timestamp,
                 },
             ) as response:
-                return await response.json()
+                status = response.status
+                try:
+                    data = await response.json(content_type=None)
+                except (json.JSONDecodeError, aiohttp.ContentTypeError) as e:
+                    raw = await response.text()
+                    logger.warning(
+                        f"DMWebhookClient: non-JSON response (status={status}): {raw[:200]} — {e}"
+                    )
+                    return {"success": False, "error": f"non-JSON response (status={status})"}
+
+                if status not in (200, 201):
+                    logger.warning(
+                        f"DMWebhookClient: unexpected status {status} for user {user_id}: {data}"
+                    )
+
+                return data

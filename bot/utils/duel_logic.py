@@ -111,7 +111,11 @@ async def send_dm_with_fallback(
     user_id: int,
     embed: discord.Embed,
 ) -> None:
-    if bot.dm_client is not None:
+    if bot.dm_client is None:
+        logger.debug(
+            f"send_dm_with_fallback: dm_client not configured, using main bot for {user_id}"
+        )
+    else:
         try:
             result = await bot.dm_client.send_dm(user_id, embed=dict(embed.to_dict()))
             if result.get("success"):
@@ -120,13 +124,13 @@ async def send_dm_with_fallback(
                 )
                 return
             logger.warning(
-                f"send_dm_with_fallback: vagudle bot failed for {user_id}: "
-                f"{result.get('error')} — falling back to main bot"
+                f"send_dm_with_fallback: vagudle bot returned non-success for {user_id} "
+                f"— error={result.get('error')!r}, falling back to main bot"
             )
         except Exception as e:
             logger.warning(
-                f"send_dm_with_fallback: vagudle bot exception for {user_id}: "
-                f"{e} — falling back to main bot"
+                f"send_dm_with_fallback: vagudle bot exception for {user_id} "
+                f"({type(e).__name__}: {e}) — falling back to main bot"
             )
 
     user = await bot.fetch_user(user_id)

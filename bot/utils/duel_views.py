@@ -385,7 +385,13 @@ class DuelActivityView(discord.ui.View):
             "generated_at": generated_at,
         }
 
-        await interaction.client.kv.store_activity_duel(invite_code, duel_data)
+        kv_key = str(channel_id)
+        stored = await interaction.client.kv.store_activity_duel(kv_key, duel_data)
+        if not stored:
+            logger.warning(
+                f"DuelActivityView: KV write failed for channel {channel_id}, duel {self.duel_id}"
+            )
+
         await interaction.client.d1.insert_duel_stub(
             duel_id=self.duel_id,
             discord_id=str(discord_id),
@@ -413,7 +419,7 @@ class DuelActivityView(discord.ui.View):
         )
         logger.info(
             f"DuelActivityView: user {discord_id} got activity invite {invite_code} "
-            f"for duel {self.duel_id} in channel {channel_id}"
+            f"for duel {self.duel_id} in channel {channel_id} — KV key: activity_duel:{kv_key}"
         )
 
     @discord.ui.button(label="Open Activity", style=discord.ButtonStyle.primary)

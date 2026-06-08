@@ -14,6 +14,7 @@ D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
 D1_TABLE_LEADERBOARD_HARD = "leaderboard_hard"
 
 ACTIVITY_DUEL_TTL = 86400
+_PROCESSED_DUEL_TTL = 7 * 24 * 3600  # 7 days
 
 
 class CloudflareKV:
@@ -76,6 +77,26 @@ class CloudflareKV:
 
     async def get_activity_duel(self, key: str) -> Optional[Dict]:
         return await self.get_value(f"activity_duel:{key}")
+
+    async def is_duel_processed(self, duel_id: str) -> bool:
+        result = await self.get_value(f"duel_processed:{duel_id}")
+        return result is not None
+
+    async def mark_duel_processed(self, duel_id: str) -> bool:
+        url = f"{self.base_url}/values/duel_processed:{duel_id}"
+        params = {"expiration_ttl": _PROCESSED_DUEL_TTL}
+        data = json.dumps({"processed_at": datetime.now(timezone.utc).isoformat()})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                url, headers=self.headers, params=params, data=data
+            ) as response:
+                ok = response.status in [200, 201]
+                if not ok:
+                    logger.warning(
+                        f"KV mark_duel_processed: status {response.status} for duel '{duel_id}'"
+                    )
+                return ok
 
     async def list_keys(self, prefix: str = "", limit: int = 1000) -> List[Dict]:
         url = f"{self.base_url}/keys"
@@ -142,9 +163,6 @@ class CloudflareKV:
                 continue
             try:
                 dt = datetime.fromisoformat(submitted.replace("Z", "+00:00"))
-                logger.debug(
-                    f"  feedback '{f.get('id', '?')}' submittedAt={submitted} — {'NEW' if dt > since else 'old'}"
-                )
                 if dt > since:
                     new.append(f)
             except ValueError:

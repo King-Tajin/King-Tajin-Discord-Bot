@@ -1,16 +1,9 @@
-import base64
 import json
-import random
-import string
-import time
 from functools import cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from bot.config import Config
-
-_KEY: str = Config.CHALLENGE_KEY
-_KEY_BYTES: list[int] = [ord(c) for c in _KEY]
+from bot.utils.encoding import generate_id, xor_encode
 
 ChallengeDict = Literal["normal", "hard", "full"]
 
@@ -42,7 +35,6 @@ def _load_sets() -> tuple[set[str], set[str], set[str]]:
 def is_word_in_dict(word: str, dict_type: ChallengeDict) -> bool:
     normal_set, hard_set, full_set = _load_sets()
     w = word.lower()
-
     if dict_type == "normal":
         return w in normal_set
     if dict_type == "hard":
@@ -70,25 +62,10 @@ def get_dict_hints(
     return {"found_in": None, "easier_than": easier_than}
 
 
-def _xor_encode(input_str: str) -> str:
-    byte_vals = [
-        ord(c) ^ _KEY_BYTES[i % len(_KEY_BYTES)] for i, c in enumerate(input_str)
-    ]
-    binary = bytes(byte_vals)
-    encoded = base64.urlsafe_b64encode(binary).decode("ascii")
-    return encoded.rstrip("=")
-
-
-def _generate_id() -> str:
-    rand_part = "".join(random.choices(string.ascii_lowercase + string.digits, k=7))
-    time_part = hex(int(time.time() * 1000))[2:][-6:]
-    return rand_part + time_part
-
-
 def encode_challenge(
     word: str, dict_type: ChallengeDict, guesses: int
 ) -> tuple[str, str]:
-    challenge_id = _generate_id()
+    challenge_id = generate_id()
     config = {
         "word": word.upper(),
         "dict": dict_type,
@@ -96,7 +73,7 @@ def encode_challenge(
         "length": len(word),
         "id": challenge_id,
     }
-    encoded = _xor_encode(json.dumps(config, separators=(",", ":")))
+    encoded = xor_encode(json.dumps(config, separators=(",", ":")))
     return encoded, challenge_id
 
 

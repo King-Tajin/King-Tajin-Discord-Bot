@@ -47,6 +47,7 @@ def setup(bot: TajinHelper) -> None:
         view = LeaderboardView(
             bot=bot,
             all_rows=all_rows,
+            interaction_user_id=interaction.user.id,
             sort_by="unique",
             difficulty="normal",
             page=1,
@@ -54,4 +55,5 @@ def setup(bot: TajinHelper) -> None:
             lookup_user=user,
         )
 
-        await interaction.followup.send(embed=embed, view=view)
+        msg = await interaction.followup.send(embed=embed, view=view)
+        view.message = msg

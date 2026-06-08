@@ -50,6 +50,9 @@ logger = logging.getLogger(__name__)
 FEEDBACK_LOOKBACK_HOURS = 2
 _STALE_DUEL_DM_BATCH = 10
 
+_CF_STATS_TITLE = "CurseForge Stats Updated!"
+_MR_STATS_TITLE = "Modrinth Stats Updated!"
+
 
 class TajinHelper(commands.Bot):
     def __init__(self):
@@ -370,7 +373,7 @@ class TajinHelper(commands.Bot):
                 return
 
             last_stats = await get_last_posted_stats(
-                channel, bot_user, "CurseForge Stats"
+                channel, bot_user, _CF_STATS_TITLE
             )
 
             if stats["followers"] is None:
@@ -416,7 +419,7 @@ class TajinHelper(commands.Bot):
 
             try:
                 embed = create_curseforge_embed(stats)
-                embed.title = "CurseForge Stats Updated!"
+                embed.title = _CF_STATS_TITLE
                 if changes:
                     embed.description = "Changes: " + ", ".join(changes)
 
@@ -468,8 +471,9 @@ class TajinHelper(commands.Bot):
             bot_user = self.user
             if not bot_user:
                 return
+
             last_stats = await get_last_posted_stats(
-                channel, bot_user, "Modrinth Stats"
+                channel, bot_user, _MR_STATS_TITLE
             )
 
             should_post = False
@@ -509,7 +513,7 @@ class TajinHelper(commands.Bot):
 
             try:
                 embed = create_modrinth_embed(stats)
-                embed.title = "Modrinth Stats Updated!"
+                embed.title = _MR_STATS_TITLE
                 if changes:
                     embed.description = "Changes: " + ", ".join(changes)
 
@@ -607,7 +611,14 @@ def create_bot() -> TajinHelper:
             f"Command error from {interaction.user} (id={interaction.user.id}): {error}"
         )
         try:
-            await interaction.followup.send("An unexpected error occurred.")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "An unexpected error occurred.", ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    "An unexpected error occurred.", ephemeral=True
+                )
         except discord.HTTPException:
             pass
 

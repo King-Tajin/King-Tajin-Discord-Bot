@@ -20,9 +20,11 @@ class Config:
     CHALLENGE_KEY = os.getenv("CHALLENGE_KEY", "test")
     DUEL_WEBHOOK_SECRET = os.getenv("DUEL_WEBHOOK_SECRET")
     DUEL_WEBHOOK_PORT = int(os.getenv("DUEL_WEBHOOK_PORT", 8079))
-    ACTIVITY_APP_ID = os.getenv("ACTIVITY_APP_ID")
     VAGUDLE_WORKER_URL = os.getenv("VAGUDLE_WORKER_URL")
     VAGUDLE_WORKER_SECRET = os.getenv("VAGUDLE_WORKER_SECRET")
+
+    _raw_activity_app_id = os.getenv("ACTIVITY_APP_ID")
+    ACTIVITY_APP_ID: int | None = int(_raw_activity_app_id) if _raw_activity_app_id else None
 
     @classmethod
     def validate(cls):

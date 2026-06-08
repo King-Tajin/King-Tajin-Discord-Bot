@@ -18,8 +18,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_STALE_DUEL_DM_BATCH = 10
 _processed_duels: set[str] = set()
+_duel_locks: dict[str, asyncio.Lock] = {}
+_MAX_PROCESSED_CACHE = 500
+
+
+def _get_duel_lock(duel_id: str) -> asyncio.Lock:
+    if duel_id not in _duel_locks:
+        _duel_locks[duel_id] = asyncio.Lock()
+    return _duel_locks[duel_id]
 
 
 def _calc_duration_seconds(generated_at: str, completed_at: str) -> float | None:
@@ -44,11 +51,19 @@ def _determine_duel_outcomes(r1: dict, r2: dict) -> tuple[bool, bool]:
     if not r1_got_word and r2_got_word:
         return False, True
 
-    r1_guesses = int(r1.get("guesses_used") or 0)
-    r2_guesses = int(r2.get("guesses_used") or 0)
+    r1_guesses_raw: int | float | str | None = r1.get("guesses_used")
+    r2_guesses_raw: int | float | str | None = r2.get("guesses_used")
 
-    if r1_guesses != r2_guesses:
-        return r1_guesses < r2_guesses, r2_guesses < r1_guesses
+    if r1_guesses_raw is not None and r2_guesses_raw is not None:
+        r1_guesses = int(r1_guesses_raw)
+        r2_guesses = int(r2_guesses_raw)
+        if r1_guesses != r2_guesses:
+            return r1_guesses < r2_guesses, r2_guesses < r1_guesses
+    else:
+        logger.warning(
+            f"_determine_duel_outcomes: guesses_used missing for one or both players "
+            f"(r1={r1_guesses_raw!r}, r2={r2_guesses_raw!r}) — skipping guess comparison"
+        )
 
     r1_time = _calc_duration_seconds(
         r1.get("generated_at", ""), r1.get("completed_at", "")
@@ -139,131 +154,150 @@ async def send_dm_with_fallback(
 
 
 async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
-    try:
-        if duel_id in _processed_duels:
-            logger.debug(
-                f"check_duel_completion: duel {duel_id} already processed, skipping"
-            )
-            return
-
-        results = await bot.d1.get_duel_results(duel_id)
-
-        if len(results) < 2:
-            logger.info(
-                f"check_duel_completion: duel {duel_id} only has {len(results)} result(s), waiting for both players"
-            )
-            return
-
-        logger.info(
-            f"check_duel_completion: duel {duel_id} complete, processing outcomes"
-        )
-
-        r1 = results[0]
-        r2 = results[1]
-
-        dict_type = r1.get("dict_type", "normal")
-        leaderboard_table = (
-            D1_TABLE_LEADERBOARD_NORMAL
-            if dict_type == "normal"
-            else D1_TABLE_LEADERBOARD_HARD
-        )
-
-        r1_duel_won, r2_duel_won = _determine_duel_outcomes(r1, r2)
-        r1_id = str(r1.get("discord_id", ""))
-        r2_id = str(r2.get("discord_id", ""))
-
-        lb1_ok = await bot.d1.upsert_leaderboard(
-            r1_id, r2_id, r1_duel_won, leaderboard_table
-        )
-        lb2_ok = await bot.d1.upsert_leaderboard(
-            r2_id, r1_id, r2_duel_won, leaderboard_table
-        )
-
-        if not lb1_ok or not lb2_ok:
-            logger.error(
-                f"check_duel_completion: leaderboard upsert failed for duel {duel_id}, will retry on next webhook call"
-            )
-            return
-
-        _processed_duels.add(duel_id)
-        logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
-
-        await bot.kv.increment_duels_played()
-        logger.info(f"check_duel_completion: incremented vagudle_duels_played")
-
-        word = str(r1.get("word", "?"))
-
-        for result, opponent, duel_won, opp_duel_won in (
-            (r1, r2, r1_duel_won, r2_duel_won),
-            (r2, r1, r2_duel_won, r1_duel_won),
-        ):
-            discord_id = result.get("discord_id")
-            guesses = result.get("guesses_used", "?")
-            opp_guesses = opponent.get("guesses_used", "?")
-            opp_got_word = bool(opponent.get("won"))
-            opp_outcome = "Won" if opp_duel_won else "Lost"
-
-            my_time = _format_duration(
-                result.get("generated_at", ""), result.get("completed_at", "")
-            )
-            opp_time = _format_duration(
-                opponent.get("generated_at", ""), opponent.get("completed_at", "")
-            )
-
-            guesses_label = f"{guesses} guess{'es' if guesses != 1 else ''}"
-            opp_guesses_label = (
-                f"{opp_guesses} guess{'es' if opp_guesses != 1 else ''}"
-                if opp_got_word
-                else "DNF"
-            )
-
-            if duel_won and opp_duel_won:
-                outcome_line = "🤝 It's a tie!"
-                color = discord.Color.gold()
-            elif duel_won:
-                outcome_line = "🏆 You won!"
-                color = discord.Color.green()
-            else:
-                outcome_line = "💀 You lost."
-                color = discord.Color.red()
-
-            embed = discord.Embed(
-                title="⚔️ Duel Complete!",
-                description=outcome_line,
-                color=color,
-                timestamp=datetime.now(timezone.utc),
-            )
-            embed.add_field(name="Word", value=word, inline=False)
-            embed.add_field(name="Your guesses", value=guesses_label, inline=True)
-            embed.add_field(name="Your time", value=my_time, inline=True)
-            embed.add_field(name="\u200b", value="\u200b", inline=True)
-            embed.add_field(name="Opponent result", value=opp_outcome, inline=True)
-            embed.add_field(
-                name="Opponent guesses", value=opp_guesses_label, inline=True
-            )
-            embed.add_field(name="Opponent time", value=opp_time, inline=True)
-
-            if discord_id is None:
-                logger.warning(
-                    "check_duel_completion: result missing discord_id, skipping DM"
+    async with _get_duel_lock(duel_id):
+        try:
+            if duel_id in _processed_duels:
+                logger.debug(
+                    f"check_duel_completion: {duel_id} already processed (memory cache)"
                 )
-                continue
+                return
 
-            try:
-                await send_dm_with_fallback(bot, int(str(discord_id)), embed)
+            if await bot.kv.is_duel_processed(duel_id):
+                _processed_duels.add(duel_id)
+                logger.debug(
+                    f"check_duel_completion: {duel_id} already processed (KV)"
+                )
+                return
+
+            results = await bot.d1.get_duel_results(duel_id)
+
+            if len(results) < 2:
                 logger.info(
-                    f"check_duel_completion: DMed result to user {discord_id}"
+                    f"check_duel_completion: duel {duel_id} only has {len(results)} result(s), "
+                    f"waiting for both players"
                 )
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                return
+
+            logger.info(
+                f"check_duel_completion: duel {duel_id} complete, processing outcomes"
+            )
+
+            r1 = results[0]
+            r2 = results[1]
+
+            dict_type = r1.get("dict_type", "normal")
+            leaderboard_table = (
+                D1_TABLE_LEADERBOARD_NORMAL
+                if dict_type == "normal"
+                else D1_TABLE_LEADERBOARD_HARD
+            )
+
+            r1_duel_won, r2_duel_won = _determine_duel_outcomes(r1, r2)
+            r1_id = str(r1.get("discord_id", ""))
+            r2_id = str(r2.get("discord_id", ""))
+
+            lb1_ok = await bot.d1.upsert_leaderboard(
+                r1_id, r2_id, r1_duel_won, leaderboard_table
+            )
+            lb2_ok = await bot.d1.upsert_leaderboard(
+                r2_id, r1_id, r2_duel_won, leaderboard_table
+            )
+
+            if not lb1_ok or not lb2_ok:
+                logger.error(
+                    f"check_duel_completion: leaderboard upsert failed for duel {duel_id}, "
+                    f"will retry on next webhook call"
+                )
+                return
+
+            kv_ok = await bot.kv.mark_duel_processed(duel_id)
+            if not kv_ok:
                 logger.warning(
-                    f"check_duel_completion: could not DM user {discord_id}: {e}"
+                    f"check_duel_completion: KV mark_duel_processed failed for {duel_id} "
+                    f"— restart-safety is degraded for this duel"
                 )
 
-    except Exception as e:
-        logger.error(
-            f"check_duel_completion: unhandled exception for duel {duel_id}: {e}",
-            exc_info=True,
-        )
+            _processed_duels.add(duel_id)
+            if len(_processed_duels) > _MAX_PROCESSED_CACHE:
+                _processed_duels.clear()
+
+            logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
+
+            await bot.kv.increment_duels_played()
+
+            word = str(r1.get("word", "?"))
+
+            for result, opponent, duel_won, opp_duel_won in (
+                (r1, r2, r1_duel_won, r2_duel_won),
+                (r2, r1, r2_duel_won, r1_duel_won),
+            ):
+                discord_id = result.get("discord_id")
+                guesses = result.get("guesses_used", "?")
+                opp_guesses = opponent.get("guesses_used", "?")
+                opp_got_word = bool(opponent.get("won"))
+                opp_outcome = "Won" if opp_duel_won else "Lost"
+
+                my_time = _format_duration(
+                    result.get("generated_at", ""), result.get("completed_at", "")
+                )
+                opp_time = _format_duration(
+                    opponent.get("generated_at", ""), opponent.get("completed_at", "")
+                )
+
+                guesses_label = f"{guesses} guess{'es' if guesses != 1 else ''}"
+                opp_guesses_label = (
+                    f"{opp_guesses} guess{'es' if opp_guesses != 1 else ''}"
+                    if opp_got_word
+                    else "DNF"
+                )
+
+                if duel_won and opp_duel_won:
+                    outcome_line = "🤝 It's a tie!"
+                    color = discord.Color.gold()
+                elif duel_won:
+                    outcome_line = "🏆 You won!"
+                    color = discord.Color.green()
+                else:
+                    outcome_line = "💀 You lost."
+                    color = discord.Color.red()
+
+                embed = discord.Embed(
+                    title="⚔️ Duel Complete!",
+                    description=outcome_line,
+                    color=color,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                embed.add_field(name="Word", value=word, inline=False)
+                embed.add_field(name="Your guesses", value=guesses_label, inline=True)
+                embed.add_field(name="Your time", value=my_time, inline=True)
+                embed.add_field(name="\u200b", value="\u200b", inline=True)
+                embed.add_field(name="Opponent result", value=opp_outcome, inline=True)
+                embed.add_field(
+                    name="Opponent guesses", value=opp_guesses_label, inline=True
+                )
+                embed.add_field(name="Opponent time", value=opp_time, inline=True)
+
+                if discord_id is None:
+                    logger.warning(
+                        "check_duel_completion: result missing discord_id, skipping DM"
+                    )
+                    continue
+
+                try:
+                    await send_dm_with_fallback(bot, int(str(discord_id)), embed)
+                    logger.info(
+                        f"check_duel_completion: DMed result to user {discord_id}"
+                    )
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                    logger.warning(
+                        f"check_duel_completion: could not DM user {discord_id}: {e}"
+                    )
+
+        except Exception as e:
+            logger.error(
+                f"check_duel_completion: unhandled exception for duel {duel_id}: {e}",
+                exc_info=True,
+            )
 
 
 async def handle_duel_webhook(request: web.Request) -> web.Response:

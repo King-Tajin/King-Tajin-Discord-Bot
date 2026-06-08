@@ -9,9 +9,12 @@ def create_feedback_embed(feedback: dict) -> discord.Embed:
 
     color = discord.Color.green() if completed else discord.Color.orange()
 
-    timestamp = datetime.fromisoformat(
-        feedback.get("submittedAt", "").replace("Z", "+00:00")
-    )
+    try:
+        timestamp = datetime.fromisoformat(
+            feedback.get("submittedAt", "").replace("Z", "+00:00")
+        )
+    except (ValueError, AttributeError):
+        timestamp = datetime.now(timezone.utc)
 
     status_text = "Completed" if completed else "Pending"
     embed = discord.Embed(

@@ -161,6 +161,7 @@ class LeaderboardView(discord.ui.View):
         self,
         bot: TajinHelper,
         all_rows: list[dict],
+        interaction_user_id: int,
         sort_by: str = "unique",
         difficulty: str = "normal",
         page: int = 1,
@@ -170,11 +171,13 @@ class LeaderboardView(discord.ui.View):
         super().__init__(timeout=120)
         self.bot = bot
         self.all_rows = all_rows
+        self.interaction_user_id = interaction_user_id
         self.sort_by = sort_by
         self.difficulty = difficulty
         self.page = page
         self.total_pages = total_pages
         self.lookup_user = lookup_user
+        self.message: discord.Message | None = None
         self._refresh_buttons()
 
     def _refresh_buttons(self) -> None:
@@ -186,6 +189,25 @@ class LeaderboardView(discord.ui.View):
         )
         self.prev_btn.disabled = self.page <= 1
         self.next_btn.disabled = self.page >= self.total_pages
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+    async def _check_owner(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.interaction_user_id:
+            await interaction.response.send_message(
+                "This leaderboard belongs to someone else. Run `/vagudle_leaderboard` to get your own.",
+                ephemeral=True,
+            )
+            return False
+        return True
 
     async def _update(self, interaction: discord.Interaction) -> None:
         table = (
@@ -210,6 +232,8 @@ class LeaderboardView(discord.ui.View):
     async def sort_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
+        if not await self._check_owner(interaction):
+            return
         self.sort_by = "total" if self.sort_by == "unique" else "unique"
         self.page = 1
         await self._update(interaction)
@@ -218,6 +242,8 @@ class LeaderboardView(discord.ui.View):
     async def prev_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
+        if not await self._check_owner(interaction):
+            return
         self.page = max(1, self.page - 1)
         await self._update(interaction)
 
@@ -225,6 +251,8 @@ class LeaderboardView(discord.ui.View):
     async def next_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
+        if not await self._check_owner(interaction):
+            return
         self.page = min(self.total_pages, self.page + 1)
         await self._update(interaction)
 
@@ -232,6 +260,8 @@ class LeaderboardView(discord.ui.View):
     async def diff_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
+        if not await self._check_owner(interaction):
+            return
         self.difficulty = "hard" if self.difficulty == "normal" else "normal"
         self.page = 1
         await self._update(interaction)

@@ -10,6 +10,7 @@ from bot.utils.curseforge import get_curseforge_stats
 from bot.utils.embeds import create_curseforge_embed, create_modrinth_embed
 from bot.utils.helpers import check_guild
 from bot.utils.modrinth import get_modrinth_stats
+from bot.main import _CF_STATS_TITLE, _MR_STATS_TITLE
 
 if TYPE_CHECKING:
     from bot.main import TajinHelper
@@ -95,6 +96,7 @@ def setup(bot: TajinHelper) -> None:
         try:
             await bot.kv.store_curseforge_stats(stats)
             embed = create_curseforge_embed(stats)
+            embed.title = _CF_STATS_TITLE
             message = await channel.send(embed=embed)
 
             if hasattr(channel, "is_news") and channel.is_news():
@@ -143,6 +145,7 @@ def setup(bot: TajinHelper) -> None:
         try:
             await bot.kv.store_modrinth_stats(stats)
             embed = create_modrinth_embed(stats)
+            embed.title = _MR_STATS_TITLE
             message = await channel.send(embed=embed)
 
             if hasattr(channel, "is_news") and channel.is_news():

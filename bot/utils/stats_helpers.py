@@ -1,6 +1,9 @@
 import discord
 from typing import Optional
 
+CF_STATS_TITLE = "CurseForge Stats Updated!"
+MR_STATS_TITLE = "Modrinth Stats Updated!"
+
 
 def fmt_diff(diff: int, format_fn) -> str:
     prefix = "+" if diff > 0 else ""

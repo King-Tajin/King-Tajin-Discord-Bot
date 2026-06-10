@@ -320,6 +320,13 @@ class CloudflareD1:
             [duel_id],
         )
 
+    async def get_duel_stub(self, duel_id: str, discord_id: str) -> dict | None:
+        rows = await self._query(
+            f"SELECT * FROM {D1_TABLE_DUEL_RESULTS} WHERE duel_id = ? AND discord_id = ?",
+            [duel_id, discord_id],
+        )
+        return rows[0] if rows else None
+
     async def get_stale_duel_data(self) -> list[dict]:
         return await self._query(
             f"SELECT duel_id, discord_id, completed_at, generated_at, dict_type, word "

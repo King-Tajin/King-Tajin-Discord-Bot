@@ -43,7 +43,11 @@ def generate_duel_id() -> str:
 
 
 def encode_duel(
-    word: str, difficulty: DuelDifficulty, duel_id: str, discord_id: str
+    word: str,
+    difficulty: DuelDifficulty,
+    duel_id: str,
+    discord_id: str,
+    created_at_ms: int | None = None,
 ) -> str:
     cfg = DIFFICULTY_CONFIG[difficulty]
     payload = {
@@ -53,7 +57,7 @@ def encode_duel(
         "length": len(word),
         "id": duel_id,
         "discord_id": discord_id,
-        "created_at": int(time.time() * 1000),
+        "created_at": created_at_ms if created_at_ms is not None else int(time.time() * 1000),
     }
     return xor_encode(json.dumps(payload, separators=(",", ":")))
 

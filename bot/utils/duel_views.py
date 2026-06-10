@@ -184,6 +184,23 @@ class DuelInviteView(discord.ui.View):
             return True
         return False
 
+    async def _resolve_url(
+        self, interaction: discord.Interaction, discord_id: int
+    ) -> str | None:
+        stub = await interaction.client.d1.get_duel_stub(self.duel_id, str(discord_id))
+        if stub is None:
+            return None
+        generated_at_str: str = stub.get("generated_at") or ""
+        try:
+            dt = datetime.fromisoformat(generated_at_str.replace("Z", "+00:00"))
+            created_at_ms = int(dt.timestamp() * 1000)
+        except (ValueError, AttributeError):
+            return None
+        encoded = encode_duel(
+            self.word, self.difficulty, self.duel_id, str(discord_id), created_at_ms
+        )
+        return build_duel_url(Config.VAGUDLE_URL, encoded)
+
     @discord.ui.button(label="Get My Link", style=discord.ButtonStyle.primary)
     async def player1_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
@@ -200,15 +217,27 @@ class DuelInviteView(discord.ui.View):
         async with self._lock:
             cached = self.player1_url
 
+        if cached is None:
+            cached = await self._resolve_url(interaction, self.player1_id)
+            if cached is not None:
+                async with self._lock:
+                    self.player1_url = cached
+
         if cached is not None:
             await interaction.response.send_message(
                 f"Here's your duel link — keep it private!\n{cached}",
                 ephemeral=True,
             )
+            async with self._lock:
+                both_done = self.player2_url is not None
+            if both_done:
+                await self._disable_buttons(interaction)
             return
 
+        generated_at = datetime.now(timezone.utc)
+        created_at_ms = int(generated_at.timestamp() * 1000)
         encoded = encode_duel(
-            self.word, self.difficulty, self.duel_id, str(self.player1_id)
+            self.word, self.difficulty, self.duel_id, str(self.player1_id), created_at_ms
         )
         url = build_duel_url(Config.VAGUDLE_URL, encoded)
 
@@ -223,7 +252,7 @@ class DuelInviteView(discord.ui.View):
             word_length=len(self.word),
             dict_type=cfg["dict"],
             max_guesses=cfg["guesses"],
-            generated_at=datetime.now(timezone.utc).isoformat(),
+            generated_at=generated_at.isoformat(),
         )
 
         await interaction.response.send_message(
@@ -262,15 +291,27 @@ class DuelInviteView(discord.ui.View):
 
             cached = self.player2_url
 
+        if cached is None:
+            cached = await self._resolve_url(interaction, self.player2_id)
+            if cached is not None:
+                async with self._lock:
+                    self.player2_url = cached
+
         if cached is not None:
             await interaction.response.send_message(
                 f"You've accepted the duel! Here's your link — keep it private!\n{cached}",
                 ephemeral=True,
             )
+            async with self._lock:
+                both_done = self.player1_url is not None
+            if both_done:
+                await self._disable_buttons(interaction)
             return
 
+        generated_at = datetime.now(timezone.utc)
+        created_at_ms = int(generated_at.timestamp() * 1000)
         encoded = encode_duel(
-            self.word, self.difficulty, self.duel_id, str(self.player2_id)
+            self.word, self.difficulty, self.duel_id, str(self.player2_id), created_at_ms
         )
         url = build_duel_url(Config.VAGUDLE_URL, encoded)
 
@@ -285,7 +326,7 @@ class DuelInviteView(discord.ui.View):
             word_length=len(self.word),
             dict_type=cfg["dict"],
             max_guesses=cfg["guesses"],
-            generated_at=datetime.now(timezone.utc).isoformat(),
+            generated_at=generated_at.isoformat(),
         )
 
         await interaction.response.send_message(

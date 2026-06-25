@@ -3,7 +3,7 @@ from functools import cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from bot.utils.encoding import generate_id, xor_encode
+from bot.utils.encoding import generate_id, aes_gcm_encode
 
 ChallengeDict = Literal["normal", "hard", "full"]
 
@@ -73,7 +73,7 @@ def encode_challenge(
         "length": len(word),
         "id": challenge_id,
     }
-    encoded = xor_encode(json.dumps(config, separators=(",", ":")))
+    encoded = aes_gcm_encode(json.dumps(config, separators=(",", ":")))
     return encoded, challenge_id
 
 

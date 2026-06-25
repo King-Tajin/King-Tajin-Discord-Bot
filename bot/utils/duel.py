@@ -5,7 +5,7 @@ from functools import cache
 from pathlib import Path
 from typing import Literal
 
-from bot.utils.encoding import generate_id, xor_encode
+from bot.utils.encoding import generate_id, aes_gcm_encode
 
 DuelDifficulty = Literal["normal", "hard"]
 
@@ -59,7 +59,7 @@ def encode_duel(
         "discord_id": discord_id,
         "created_at": created_at_ms if created_at_ms is not None else int(time.time() * 1000),
     }
-    return xor_encode(json.dumps(payload, separators=(",", ":")))
+    return aes_gcm_encode(json.dumps(payload, separators=(",", ":")))
 
 
 def build_duel_url(base_url: str, encoded: str) -> str:

@@ -12,6 +12,7 @@ from aiohttp import web
 
 from bot.config import Config
 from bot.utils.cloudflare import D1_TABLE_LEADERBOARD_HARD, D1_TABLE_LEADERBOARD_NORMAL
+from bot.utils.order_webhook import register_order_routes
 
 if TYPE_CHECKING:
     from bot.main import TajinHelper
@@ -326,6 +327,7 @@ async def start_webhook_server(bot: TajinHelper) -> web.AppRunner:
     app = web.Application()
     app["bot"] = bot
     app.router.add_post("/webhook/duel", handle_duel_webhook)
+    register_order_routes(app)
 
     runner = web.AppRunner(app)
     await runner.setup()

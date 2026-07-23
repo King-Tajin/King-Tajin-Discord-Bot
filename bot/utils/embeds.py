@@ -183,6 +183,28 @@ def create_stats_embed(feedbacks: list) -> discord.Embed:
     return embed
 
 
+def create_order_embed(total: str | None, items: list) -> discord.Embed:
+    embed = discord.Embed(
+        title="🛒 New Order!",
+        color=discord.Color.gold(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    if items:
+        lines = [
+            f"**{item.get('quantity', 1)}x** {item.get('name', 'Item')}"
+            for item in items
+        ]
+        embed.add_field(name="Items", value="\n".join(lines), inline=False)
+    else:
+        embed.add_field(name="Items", value="No item details provided", inline=False)
+
+    embed.add_field(name="Total", value=f"**{total}**" if total else "Unknown", inline=False)
+    embed.set_footer(text="Thank you for all the support!")
+
+    return embed
+
+
 def create_curseforge_embed(stats: dict) -> discord.Embed:
     from bot.utils.curseforge import format_number
 

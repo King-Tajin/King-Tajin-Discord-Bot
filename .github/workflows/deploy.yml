@@ -16,5 +16,6 @@ jobs:
           git reset --hard origin/master
           source venv/bin/activate
           nice -n 19 ionice -c 2 -n 7 pip install -r requirements.txt
-          nice -n 19 ionice -c 2 -n 7 playwright install --with-deps
+          nice -n 19 ionice -c 2 -n 7 playwright install
+          nice -n 19 ionice -c 2 -n 7 sudo /opt/discord-bot/venv/bin/playwright install-deps
           sudo systemctl restart discord-bot

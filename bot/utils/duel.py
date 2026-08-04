@@ -57,7 +57,9 @@ def encode_duel(
         "length": len(word),
         "id": duel_id,
         "discord_id": discord_id,
-        "created_at": created_at_ms if created_at_ms is not None else int(time.time() * 1000),
+        "created_at": (
+            created_at_ms if created_at_ms is not None else int(time.time() * 1000)
+        ),
     }
     return aes_gcm_encode(json.dumps(payload, separators=(",", ":")))
 

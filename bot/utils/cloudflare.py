@@ -12,9 +12,11 @@ FIRST_RUN_LOOKBACK_HOURS = 2
 D1_TABLE_DUEL_RESULTS = "duel_results"
 D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
 D1_TABLE_LEADERBOARD_HARD = "leaderboard_hard"
+D1_TABLE_GROUP_STREAKS = "group_streaks"
 
 ACTIVITY_DUEL_TTL = 86400
 _PROCESSED_DUEL_TTL = 7 * 24 * 3600  # 7 days
+_DAILY_PROGRESS_TTL = 2 * 24 * 3600
 
 
 class CloudflareKV:
@@ -209,6 +211,33 @@ class CloudflareKV:
         count = int(current.get("count", 0)) if current else 0
         return await self.put_value("vagudle_duels_played", {"count": count + 1})
 
+    async def store_daily_channel(self, guild_id: str, channel_id: str) -> bool:
+        return await self.put_value(
+            f"daily_channel:{guild_id}", {"channel_id": channel_id}
+        )
+
+    async def get_daily_channel(self, guild_id: str) -> Optional[str]:
+        data = await self.get_value(f"daily_channel:{guild_id}")
+        return data.get("channel_id") if data else None
+
+    async def get_daily_progress(self, group_id: str, date: str) -> Optional[Dict]:
+        return await self.get_value(f"daily_progress:{group_id}:{date}")
+
+    async def store_daily_progress(self, group_id: str, date: str, data: Dict) -> bool:
+        url = f"{self.base_url}/values/daily_progress:{group_id}:{date}"
+        params = {"expiration_ttl": _DAILY_PROGRESS_TTL}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                url, headers=self.headers, params=params, data=json.dumps(data)
+            ) as response:
+                ok = response.status in [200, 201]
+                if not ok:
+                    logger.warning(
+                        f"KV store_daily_progress: status {response.status} for group '{group_id}' date '{date}'"
+                    )
+                return ok
+
     async def store_curseforge_stats(self, stats: Dict) -> bool:
         stats_with_timestamp = {
             **stats,
@@ -352,6 +381,13 @@ class CloudflareD1:
         rows = await self._query(
             f"SELECT * FROM {table} WHERE discord_id = ?",
             [discord_id],
+        )
+        return rows[0] if rows else None
+
+    async def get_group_streak(self, group_id: str, group_type: str) -> dict | None:
+        rows = await self._query(
+            f"SELECT * FROM {D1_TABLE_GROUP_STREAKS} WHERE group_id = ? AND group_type = ?",
+            [group_id, group_type],
         )
         return rows[0] if rows else None
 

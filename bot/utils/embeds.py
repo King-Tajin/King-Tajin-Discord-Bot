@@ -199,10 +199,82 @@ def create_order_embed(total: str | None, items: list) -> discord.Embed:
     else:
         embed.add_field(name="Items", value="No item details provided", inline=False)
 
-    embed.add_field(name="Total", value=f"**{total}**" if total else "Unknown", inline=False)
+    embed.add_field(
+        name="Total", value=f"**{total}**" if total else "Unknown", inline=False
+    )
     embed.set_footer(text="Thank you for all the support!")
 
     return embed
+
+
+_STATUS_EMOJI = {"correct": "🟩", "present": "🟨", "absent": "⬛"}
+_VAGUDLE_COLOR = discord.Color.from_rgb(80, 0, 170)
+
+
+def render_guess_row(statuses: list[str]) -> str:
+    return "".join(_STATUS_EMOJI.get(s, "⬛") for s in statuses)
+
+
+def render_masked_guessed_row(word_length: int) -> str:
+    return "❔" * word_length
+
+
+def render_masked_empty_row(word_length: int) -> str:
+    return "⬜" * word_length
+
+
+def build_daily_progress_embed(
+    daily_number: int,
+    date_str: str,
+    word_length: int,
+    max_guesses: int,
+    players: dict,
+) -> discord.Embed:
+    embed = discord.Embed(
+        title=f"🟩 Vagudle Daily #{daily_number}",
+        description=f"📅 {date_str}",
+        color=_VAGUDLE_COLOR,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    if not players:
+        embed.add_field(
+            name="Players", value="Waiting for someone to start...", inline=False
+        )
+        return embed
+
+    lines = []
+    for player in players.values():
+        mention = f"<@{player['discord_id']}>"
+
+        if player.get("finished"):
+            header = (
+                f"✅ {mention} — Won in {player.get('guesses_used', '?')}"
+                if player.get("won")
+                else f"❌ {mention} — Lost"
+            )
+            grid_rows = [render_guess_row(row) for row in player.get("grid", [])]
+            lines.append("\n".join([header, *grid_rows]))
+            continue
+
+        guessed = player.get("guess_count", 0)
+        remaining = max(0, max_guesses - guessed)
+        rows = [render_masked_guessed_row(word_length) for _ in range(guessed)]
+        rows.extend(render_masked_empty_row(word_length) for _ in range(remaining))
+        lines.append(f"{mention}\n" + "\n".join(rows))
+
+    embed.add_field(
+        name="Today's players", value="\n\n".join(lines)[:1024], inline=False
+    )
+    return embed
+
+
+def add_group_streak_footer(embed: discord.Embed, streak: dict | None) -> None:
+    if not streak:
+        return
+    current = streak.get("current_streak", 0)
+    best = streak.get("best_streak", 0)
+    embed.set_footer(text=f"🔥 Group streak: {current} (best: {best})")
 
 
 def create_curseforge_embed(stats: dict) -> discord.Embed:

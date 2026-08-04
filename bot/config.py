@@ -21,11 +21,15 @@ class Config:
     DUEL_WEBHOOK_SECRET = os.getenv("DUEL_WEBHOOK_SECRET")
     DUEL_WEBHOOK_PORT = int(os.getenv("DUEL_WEBHOOK_PORT", 8079))
     ORDER_WEBHOOK_SECRET = os.getenv("ORDER_WEBHOOK_SECRET")
+    DAILY_WEBHOOK_SECRET = os.getenv("DAILY_WEBHOOK_SECRET")
+    DAILY_EPOCH_DATE = os.getenv("DAILY_EPOCH_DATE", "2026-07-27")
     VAGUDLE_WORKER_URL = os.getenv("VAGUDLE_WORKER_URL")
     VAGUDLE_WORKER_SECRET = os.getenv("VAGUDLE_WORKER_SECRET")
 
     _raw_activity_app_id = os.getenv("ACTIVITY_APP_ID")
-    ACTIVITY_APP_ID: int | None = int(_raw_activity_app_id) if _raw_activity_app_id else None
+    ACTIVITY_APP_ID: int | None = (
+        int(_raw_activity_app_id) if _raw_activity_app_id else None
+    )
 
     @classmethod
     def validate(cls):
@@ -36,6 +40,7 @@ class Config:
             ("CLOUDFLARE_API_TOKEN", cls.CLOUDFLARE_API_TOKEN),
             ("DUEL_WEBHOOK_SECRET", cls.DUEL_WEBHOOK_SECRET),
             ("ACTIVITY_APP_ID", cls.ACTIVITY_APP_ID),
+            ("DAILY_WEBHOOK_SECRET", cls.DAILY_WEBHOOK_SECRET),
         ]
 
         missing = [name for name, value in required if not value]

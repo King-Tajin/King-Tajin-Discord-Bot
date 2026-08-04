@@ -24,7 +24,9 @@ async def announce_new_order(bot: TajinHelper, total: str | None, items: list) -
 
     channel = bot.get_channel(int(Config.STATS_CHANNEL_ID))
     if not isinstance(channel, discord.TextChannel):
-        logger.warning(f"announce_new_order: channel {Config.STATS_CHANNEL_ID} not found")
+        logger.warning(
+            f"announce_new_order: channel {Config.STATS_CHANNEL_ID} not found"
+        )
         return
 
     embed = create_order_embed(total, items)

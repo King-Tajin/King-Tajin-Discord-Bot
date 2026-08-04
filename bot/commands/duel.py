@@ -40,7 +40,9 @@ def setup(bot: TajinHelper) -> None:
     )
     @app_commands.choices(
         difficulty=[
-            app_commands.Choice(name="Normal — 11 guesses, common words", value="normal"),
+            app_commands.Choice(
+                name="Normal — 11 guesses, common words", value="normal"
+            ),
             app_commands.Choice(name="Hard — 9 guesses, uncommon words", value="hard"),
         ],
         word_length=[
@@ -79,7 +81,9 @@ def setup(bot: TajinHelper) -> None:
             if recipient is not None and recipient.id != interaction.user.id:
                 player2_id = recipient.id
                 opponent_name = recipient.display_name
-                logger.info(f"/vagudle_duel: detected DM, pre-assigned player2={player2_id} ({opponent_name})")
+                logger.info(
+                    f"/vagudle_duel: detected DM, pre-assigned player2={player2_id} ({opponent_name})"
+                )
 
         duel_id = generate_duel_id()
 
@@ -91,9 +95,13 @@ def setup(bot: TajinHelper) -> None:
             duel_id=duel_id,
         )
 
-        embed = build_duel_invite_embed(interaction.user, diff, word_length.value, opponent_name)
+        embed = build_duel_invite_embed(
+            interaction.user, diff, word_length.value, opponent_name
+        )
         await interaction.response.send_message(embed=embed, view=view)
-        logger.info(f"/vagudle_duel: posted invite, duel_id={duel_id} player1={interaction.user.id} player2={player2_id}")
+        logger.info(
+            f"/vagudle_duel: posted invite, duel_id={duel_id} player1={interaction.user.id} player2={player2_id}"
+        )
 
     @bot.tree.command(
         name="vagudle_duel_activity",
@@ -108,7 +116,9 @@ def setup(bot: TajinHelper) -> None:
     )
     @app_commands.choices(
         difficulty=[
-            app_commands.Choice(name="Normal — 11 guesses, common words", value="normal"),
+            app_commands.Choice(
+                name="Normal — 11 guesses, common words", value="normal"
+            ),
             app_commands.Choice(name="Hard — 9 guesses, uncommon words", value="hard"),
         ],
         word_length=[
@@ -147,7 +157,9 @@ def setup(bot: TajinHelper) -> None:
             return
 
         player2_id: int | None = opponent.id if opponent is not None else None
-        opponent_name: str | None = opponent.display_name if opponent is not None else None
+        opponent_name: str | None = (
+            opponent.display_name if opponent is not None else None
+        )
 
         if player2_id is None:
             channel = interaction.channel
@@ -162,7 +174,9 @@ def setup(bot: TajinHelper) -> None:
 
         app_id = Config.ACTIVITY_APP_ID
         if app_id is None:
-            await interaction.response.send_message("Bot is not ready yet. Please try again.", ephemeral=True)
+            await interaction.response.send_message(
+                "Bot is not ready yet. Please try again.", ephemeral=True
+            )
             return
 
         duel_id = generate_duel_id()
@@ -176,7 +190,9 @@ def setup(bot: TajinHelper) -> None:
             application_id=app_id,
         )
 
-        embed = build_duel_activity_embed(interaction.user, diff, word_length.value, opponent_name)
+        embed = build_duel_activity_embed(
+            interaction.user, diff, word_length.value, opponent_name
+        )
         await interaction.response.send_message(embed=embed, view=view)
         logger.info(
             f"/vagudle_duel_activity: posted invite, duel_id={duel_id} "

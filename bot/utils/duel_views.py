@@ -121,11 +121,15 @@ async def _create_activity_invite(
         return invite_data["code"], None
     except discord.HTTPException as e:
         reason = f"Discord error {e.status} (code {e.code}): {e.text}"
-        logger.error(f"_create_activity_invite: failed for channel {channel_id}: {reason}")
+        logger.error(
+            f"_create_activity_invite: failed for channel {channel_id}: {reason}"
+        )
         return None, reason
     except Exception as e:
         reason = str(e)
-        logger.error(f"_create_activity_invite: unexpected error for channel {channel_id}: {reason}")
+        logger.error(
+            f"_create_activity_invite: unexpected error for channel {channel_id}: {reason}"
+        )
         return None, reason
 
 
@@ -237,7 +241,11 @@ class DuelInviteView(discord.ui.View):
         generated_at = datetime.now(timezone.utc)
         created_at_ms = int(generated_at.timestamp() * 1000)
         encoded = encode_duel(
-            self.word, self.difficulty, self.duel_id, str(self.player1_id), created_at_ms
+            self.word,
+            self.difficulty,
+            self.duel_id,
+            str(self.player1_id),
+            created_at_ms,
         )
         url = build_duel_url(Config.VAGUDLE_URL, encoded)
 
@@ -311,7 +319,11 @@ class DuelInviteView(discord.ui.View):
         generated_at = datetime.now(timezone.utc)
         created_at_ms = int(generated_at.timestamp() * 1000)
         encoded = encode_duel(
-            self.word, self.difficulty, self.duel_id, str(self.player2_id), created_at_ms
+            self.word,
+            self.difficulty,
+            self.duel_id,
+            str(self.player2_id),
+            created_at_ms,
         )
         url = build_duel_url(Config.VAGUDLE_URL, encoded)
 
@@ -527,7 +539,9 @@ class DuelActivityView(discord.ui.View):
             if both_done:
                 await self._disable_buttons(interaction)
 
-    @discord.ui.button(label="Accept & Open Activity", style=discord.ButtonStyle.success)
+    @discord.ui.button(
+        label="Accept & Open Activity", style=discord.ButtonStyle.success
+    )
     async def player2_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:

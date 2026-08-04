@@ -79,6 +79,30 @@ async function sendMessage(channelId, payload, botToken) {
   return res.json();
 }
 
+async function editMessage(channelId, messageId, payload, botToken) {
+  const res = await fetch(
+    `${DISCORD_API}/channels/${channelId}/messages/${messageId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw Object.assign(
+      new Error(err.message || `Discord returned ${res.status}`),
+      { status: res.status }
+    );
+  }
+
+  return res.json();
+}
+
 export default {
   async fetch(request, env) {
     if (request.method !== "POST") {
@@ -86,10 +110,6 @@ export default {
     }
 
     const url = new URL(request.url);
-    if (url.pathname !== "/dm") {
-      return jsonResponse({ error: "Not found" }, 404);
-    }
-
     const rawBody = await request.text();
     const signature = request.headers.get("X-Signature");
     const timestamp = request.headers.get("X-Timestamp");
@@ -106,26 +126,92 @@ export default {
       return jsonResponse({ error: "Invalid JSON body" }, 400);
     }
 
-    const { user_id, content, embed } = body;
-
-    if (!user_id) {
-      return jsonResponse({ error: "Missing user_id" }, 400);
+    if (url.pathname === "/dm") {
+      return handleDm(body, env);
     }
 
-    if (!content && !embed) {
-      return jsonResponse({ error: "Provide at least one of: content, embed" }, 400);
+    if (url.pathname === "/channel-message") {
+      return handleChannelMessage(body, env);
     }
 
-    const messagePayload = {};
-    if (content) messagePayload.content = content;
-    if (embed) messagePayload.embeds = [embed];
-
-    try {
-      const channel = await createDMChannel(String(user_id), env.BOT_TOKEN);
-      await sendMessage(channel.id, messagePayload, env.BOT_TOKEN);
-      return jsonResponse({ success: true });
-    } catch (err) {
-      return jsonResponse({ success: false, error: err.message });
+    if (url.pathname === "/channel-message/edit") {
+      return handleChannelMessageEdit(body, env);
     }
+
+    return jsonResponse({ error: "Not found" }, 404);
   },
 };
+
+async function handleDm(body, env) {
+  const { user_id, content, embed } = body;
+
+  if (!user_id) {
+    return jsonResponse({ error: "Missing user_id" }, 400);
+  }
+
+  if (!content && !embed) {
+    return jsonResponse({ error: "Provide at least one of: content, embed" }, 400);
+  }
+
+  const messagePayload = {};
+  if (content) messagePayload.content = content;
+  if (embed) messagePayload.embeds = [embed];
+
+  try {
+    const channel = await createDMChannel(String(user_id), env.BOT_TOKEN);
+    await sendMessage(channel.id, messagePayload, env.BOT_TOKEN);
+    return jsonResponse({ success: true });
+  } catch (err) {
+    return jsonResponse({ success: false, error: err.message });
+  }
+}
+
+async function handleChannelMessage(body, env) {
+  const { channel_id, content, embed } = body;
+
+  if (!channel_id) {
+    return jsonResponse({ error: "Missing channel_id" }, 400);
+  }
+
+  if (!content && !embed) {
+    return jsonResponse({ error: "Provide at least one of: content, embed" }, 400);
+  }
+
+  const messagePayload = {};
+  if (content) messagePayload.content = content;
+  if (embed) messagePayload.embeds = [embed];
+
+  try {
+    const message = await sendMessage(String(channel_id), messagePayload, env.BOT_TOKEN);
+    return jsonResponse({ success: true, message_id: message.id });
+  } catch (err) {
+    return jsonResponse({ success: false, error: err.message });
+  }
+}
+
+async function handleChannelMessageEdit(body, env) {
+  const { channel_id, message_id, content, embed } = body;
+
+  if (!channel_id || !message_id) {
+    return jsonResponse({ error: "Missing channel_id or message_id" }, 400);
+  }
+
+  if (!content && !embed) {
+    return jsonResponse({ error: "Provide at least one of: content, embed" }, 400);
+  }
+
+  const messagePayload = {};
+  if (content) messagePayload.content = content;
+  if (embed) messagePayload.embeds = [embed];
+
+  try {
+    await editMessage(String(channel_id), String(message_id), messagePayload, env.BOT_TOKEN);
+    return jsonResponse({ success: true });
+  } catch (err) {
+    return jsonResponse({
+      success: false,
+      error: err.message,
+      not_found: err.status === 404,
+    });
+  }
+}

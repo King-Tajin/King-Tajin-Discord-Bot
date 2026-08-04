@@ -12,6 +12,7 @@ from aiohttp import web
 
 from bot.config import Config
 from bot.utils.cloudflare import D1_TABLE_LEADERBOARD_HARD, D1_TABLE_LEADERBOARD_NORMAL
+from bot.utils.daily_logic import register_daily_routes
 from bot.utils.order_webhook import register_order_routes
 
 if TYPE_CHECKING:
@@ -135,9 +136,7 @@ async def send_dm_with_fallback(
         try:
             result = await bot.dm_client.send_dm(user_id, embed=dict(embed.to_dict()))
             if result.get("success"):
-                logger.info(
-                    f"send_dm_with_fallback: sent via vagudle bot to {user_id}"
-                )
+                logger.info(f"send_dm_with_fallback: sent via vagudle bot to {user_id}")
                 return
             logger.warning(
                 f"send_dm_with_fallback: vagudle bot returned non-success for {user_id} "
@@ -165,9 +164,7 @@ async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
 
             if await bot.kv.is_duel_processed(duel_id):
                 _processed_duels.add(duel_id)
-                logger.debug(
-                    f"check_duel_completion: {duel_id} already processed (KV)"
-                )
+                logger.debug(f"check_duel_completion: {duel_id} already processed (KV)")
                 return
 
             results = await bot.d1.get_duel_results(duel_id)
@@ -222,7 +219,9 @@ async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
             if len(_processed_duels) > _MAX_PROCESSED_CACHE:
                 _processed_duels.clear()
 
-            logger.info(f"check_duel_completion: leaderboard updated for duel {duel_id}")
+            logger.info(
+                f"check_duel_completion: leaderboard updated for duel {duel_id}"
+            )
 
             await bot.kv.increment_duels_played()
 
@@ -289,7 +288,11 @@ async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
                     logger.info(
                         f"check_duel_completion: DMed result to user {discord_id}"
                     )
-                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                except (
+                    discord.NotFound,
+                    discord.Forbidden,
+                    discord.HTTPException,
+                ) as e:
                     logger.warning(
                         f"check_duel_completion: could not DM user {discord_id}: {e}"
                     )
@@ -328,6 +331,7 @@ async def start_webhook_server(bot: TajinHelper) -> web.AppRunner:
     app["bot"] = bot
     app.router.add_post("/webhook/duel", handle_duel_webhook)
     register_order_routes(app)
+    register_daily_routes(app)
 
     runner = web.AppRunner(app)
     await runner.setup()

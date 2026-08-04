@@ -9,8 +9,10 @@ from bot.config import Config
 
 _KEY: str = Config.CHALLENGE_KEY
 
+
 def _derive_key() -> bytes:
     return hashlib.sha256(_KEY.encode()).digest()
+
 
 def aes_gcm_encode(input_str: str) -> str:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -21,6 +23,7 @@ def aes_gcm_encode(input_str: str) -> str:
     ciphertext = aesgcm.encrypt(iv, input_str.encode(), None)
     combined = iv + ciphertext
     return base64.urlsafe_b64encode(combined).decode("ascii").rstrip("=")
+
 
 def generate_id() -> str:
     rand_part = "".join(random.choices(string.ascii_lowercase + string.digits, k=7))

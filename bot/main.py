@@ -40,6 +40,7 @@ from bot.utils.dm_responses import (
 from vagudle_bot.webhook_client import DMWebhookClient
 
 import bot.commands.challenge as cmd_challenge
+import bot.commands.daily as cmd_daily
 import bot.commands.duel as cmd_duel
 import bot.commands.feedback as cmd_feedback
 import bot.commands.leaderboard as cmd_leaderboard
@@ -57,7 +58,9 @@ _MR_STATS_TITLE = "Modrinth Stats Updated!"
 class TajinHelper(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
+        # noinspection PyDunderSlots,PyUnresolvedReferences
         intents.members = True
+        # noinspection PyDunderSlots,PyUnresolvedReferences
         intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
 
@@ -87,6 +90,7 @@ class TajinHelper(commands.Bot):
         self._webhook_runner = await start_webhook_server(self)
 
         cmd_challenge.setup(self)
+        cmd_daily.setup(self)
         cmd_duel.setup(self)
         cmd_feedback.setup(self)
         cmd_leaderboard.setup(self)
@@ -100,6 +104,7 @@ class TajinHelper(commands.Bot):
                 self.tree.add_command(cmd, guild=guild)
                 if cmd.name in (
                     "vagudle_challenge",
+                    "vagudle_daily_channel",
                     "vagudle_duel",
                     "vagudle_duel_activity",
                     "vagudle_leaderboard",
@@ -374,9 +379,7 @@ class TajinHelper(commands.Bot):
                 )
                 return
 
-            last_stats = await get_last_posted_stats(
-                channel, bot_user, _CF_STATS_TITLE
-            )
+            last_stats = await get_last_posted_stats(channel, bot_user, _CF_STATS_TITLE)
 
             if stats["followers"] is None:
                 fallback = last_stats.get("followers", 0) if last_stats else 0
@@ -474,9 +477,7 @@ class TajinHelper(commands.Bot):
             if not bot_user:
                 return
 
-            last_stats = await get_last_posted_stats(
-                channel, bot_user, _MR_STATS_TITLE
-            )
+            last_stats = await get_last_posted_stats(channel, bot_user, _MR_STATS_TITLE)
 
             should_post = False
             changes = []

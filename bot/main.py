@@ -16,6 +16,7 @@ from bot.utils.embeds import (
     create_modrinth_embed,
     create_new_feedback_embed,
 )
+from bot.utils.daily_logic import check_and_send_daily_reminders
 from bot.utils.duel_logic import (
     start_webhook_server,
     build_expired_duel_embed,
@@ -122,6 +123,7 @@ class TajinHelper(commands.Bot):
         self.check_new_feedback.start()
         self.update_duel_stats.start()
         self.cleanup_stale_duels.start()
+        self.send_daily_reminders.start()
 
     async def close(self):
         if self._webhook_runner:
@@ -296,6 +298,18 @@ class TajinHelper(commands.Bot):
 
     @cleanup_stale_duels.before_loop
     async def before_cleanup_stale_duels(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(time=time(hour=18, minute=0))
+    async def send_daily_reminders(self):
+        logger.info("send_daily_reminders: task fired")
+        try:
+            await check_and_send_daily_reminders(self)
+        except Exception as e:
+            logger.error(f"send_daily_reminders task error: {e}", exc_info=True)
+
+    @send_daily_reminders.before_loop
+    async def before_send_daily_reminders(self):
         await self.wait_until_ready()
 
     @tasks.loop(time=[time(hour=h, minute=15) for h in range(0, 24, 2)])

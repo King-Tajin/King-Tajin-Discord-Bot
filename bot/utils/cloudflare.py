@@ -13,6 +13,7 @@ D1_TABLE_DUEL_RESULTS = "duel_results"
 D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
 D1_TABLE_LEADERBOARD_HARD = "leaderboard_hard"
 D1_TABLE_GROUP_STREAKS = "group_streaks"
+D1_TABLE_DAILY_ATTEMPTS = "daily_attempts"
 
 ACTIVITY_DUEL_TTL = 86400
 _PROCESSED_DUEL_TTL = 7 * 24 * 3600  # 7 days
@@ -390,6 +391,25 @@ class CloudflareD1:
             [group_id, group_type],
         )
         return rows[0] if rows else None
+
+    async def get_active_daily_groups(self, date: str) -> list[dict]:
+        return await self._query(
+            f"SELECT DISTINCT group_id, group_type FROM {D1_TABLE_DAILY_ATTEMPTS} "
+            f"WHERE date = ? AND started_at IS NOT NULL AND group_id IS NOT NULL",
+            [date],
+        )
+
+    async def get_active_daily_groups_since(self, cutoff_date: str) -> list[dict]:
+        return await self._query(
+            f"SELECT DISTINCT group_id, group_type FROM {D1_TABLE_DAILY_ATTEMPTS} "
+            f"WHERE date >= ? AND started_at IS NOT NULL AND group_id IS NOT NULL",
+            [cutoff_date],
+        )
+
+    async def delete_old_daily_attempts(self) -> bool:
+        return await self._execute(
+            f"DELETE FROM {D1_TABLE_DAILY_ATTEMPTS} WHERE date < date('now', '-7 days')"
+        )
 
     async def upsert_leaderboard(
         self,

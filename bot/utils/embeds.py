@@ -277,6 +277,17 @@ def add_group_streak_footer(embed: discord.Embed, streak: dict | None) -> None:
     embed.set_footer(text=f"🔥 Group streak: {current} (best: {best})")
 
 
+def build_daily_reminder_embed(daily_number: int, date_str: str) -> discord.Embed:
+    embed = discord.Embed(
+        title=f"🟩 Vagudle Daily #{daily_number}",
+        description="No one's played today's daily yet, get a game in before it resets!",
+        color=_VAGUDLE_COLOR,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(text=f"📅 {date_str}")
+    return embed
+
+
 def create_curseforge_embed(stats: dict) -> discord.Embed:
     from bot.utils.curseforge import format_number
 

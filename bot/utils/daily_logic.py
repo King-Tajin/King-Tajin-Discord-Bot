@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
 import aiohttp
@@ -11,7 +11,11 @@ from aiohttp import web
 
 from bot.config import Config
 from bot.utils.duel import DIFFICULTY_CONFIG
-from bot.utils.embeds import add_group_streak_footer, build_daily_progress_embed
+from bot.utils.embeds import (
+    add_group_streak_footer,
+    build_daily_progress_embed,
+    build_daily_reminder_embed,
+)
 
 if TYPE_CHECKING:
     from bot.main import TajinHelper
@@ -307,6 +311,52 @@ async def handle_daily_webhook(request: web.Request) -> web.Response:
         f"handle_daily_webhook: queued '{event}' event for group {data.get('group_id')}"
     )
     return web.Response(status=200)
+
+
+async def check_and_send_daily_reminders(bot: TajinHelper) -> None:
+    if bot.dm_client is None:
+        logger.error(
+            "check_and_send_daily_reminders: vagudle bot client not configured, skipping"
+        )
+        return
+
+    today = datetime.now(timezone.utc).date()
+    today_str = today.isoformat()
+    cutoff_str = (today - timedelta(days=3)).isoformat()
+
+    recently_active_groups = await bot.d1.get_active_daily_groups_since(cutoff_str)
+    today_groups = await bot.d1.get_active_daily_groups(today_str)
+    today_keys = {
+        (str(row["group_id"]), str(row["group_type"])) for row in today_groups
+    }
+
+    daily_number = compute_daily_number(today_str)
+    embed = build_daily_reminder_embed(daily_number, today_str)
+    embed_dict = dict(embed.to_dict())
+
+    for row in recently_active_groups:
+        group_id = str(row["group_id"])
+        group_type = str(row["group_type"])
+
+        if (group_id, group_type) in today_keys:
+            continue
+
+        channel_id = await _resolve_post_channel_id(bot, group_id, group_type)
+        if not channel_id:
+            continue
+
+        result = await bot.dm_client.send_channel_message(channel_id, embed=embed_dict)
+        if not result.get("success"):
+            logger.warning(
+                f"check_and_send_daily_reminders: failed to post reminder to channel "
+                f"{channel_id} for group {group_id}: {result.get('error')}"
+            )
+
+    ok = await bot.d1.delete_old_daily_attempts()
+    if not ok:
+        logger.warning(
+            "check_and_send_daily_reminders: failed to clean up old daily_attempts"
+        )
 
 
 def register_daily_routes(app: web.Application) -> None:

@@ -1,6 +1,6 @@
 # Terms of Service for Tajin Helper
 
-**Last Updated:** May 17, 2026
+**Last Updated:** August 9, 2026
 
 Welcome to **Tajin Helper**. By inviting, interacting with, or configuring this Bot, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Bot.
 
@@ -18,6 +18,7 @@ Welcome to **Tajin Helper**. By inviting, interacting with, or configuring this 
 To keep the Bot reliable and safe for everyone, users must adhere to the following rules:
 
 * **Command Scope:** "Non-global" features and specific localized utility commands are intended strictly for use within the official home Discord server. Attempting to exploit or bypass these restrictions in other environments is prohibited.
+* **Vagudle Daily:** Daily mode's public leaderboard, usernames, and account data are governed by [Vagudle's own Terms of Service](https://vagudle.king-tajin.dev/terms), not this document. This document covers your use of Tajin Helper's Discord commands only.
 * **No Spamming:** You must not spam commands, trigger rapid automated requests, or intentionally flood the Bot's Direct Message (DM) interface with high volumes of text.
 * **No Exploiting:** Intentionally abusing bugs, glitches, or API vulnerabilities to disrupt the Bot's functionality or host server performance is strictly prohibited.
 

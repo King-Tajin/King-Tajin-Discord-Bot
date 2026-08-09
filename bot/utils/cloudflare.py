@@ -12,6 +12,7 @@ FIRST_RUN_LOOKBACK_HOURS = 2
 D1_TABLE_DUEL_RESULTS = "duel_results"
 D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
 D1_TABLE_LEADERBOARD_HARD = "leaderboard_hard"
+D1_TABLE_DAILY_LEADERBOARD = "daily_leaderboard"
 D1_TABLE_GROUP_STREAKS = "group_streaks"
 D1_TABLE_DAILY_ATTEMPTS = "daily_attempts"
 

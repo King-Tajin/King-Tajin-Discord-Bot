@@ -203,7 +203,7 @@ class LeaderboardView(discord.ui.View):
     async def _check_owner(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.interaction_user_id:
             await interaction.response.send_message(
-                "This leaderboard belongs to someone else. Run `/vagudle_leaderboard` to get your own.",
+                "This leaderboard belongs to someone else. Run `/vagudle_duel_leaderboard` to get your own.",
                 ephemeral=True,
             )
             return False

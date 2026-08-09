@@ -1,5 +1,7 @@
 import discord
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+DAILY_ICON = "<:favicon:1536064871202820198>"
 
 
 def create_feedback_embed(feedback: dict) -> discord.Embed:
@@ -231,7 +233,7 @@ def build_daily_progress_embed(
     players: dict,
 ) -> discord.Embed:
     embed = discord.Embed(
-        title=f"🟩 Vagudle Daily #{daily_number}",
+        title=f"{DAILY_ICON} Vagudle Daily #{daily_number}",
         description=f"📅 {date_str}",
         color=_VAGUDLE_COLOR,
         timestamp=datetime.now(timezone.utc),
@@ -278,9 +280,17 @@ def add_group_streak_footer(embed: discord.Embed, streak: dict | None) -> None:
 
 
 def build_daily_reminder_embed(daily_number: int, date_str: str) -> discord.Embed:
+    reset_at = datetime.strptime(date_str, "%Y-%m-%d").replace(
+        tzinfo=timezone.utc
+    ) + timedelta(days=1, hours=8)
+    reset_ts = int(reset_at.timestamp())
+
     embed = discord.Embed(
-        title=f"🟩 Vagudle Daily #{daily_number}",
-        description="No one's played today's daily yet, get a game in before it resets!",
+        title=f"{DAILY_ICON} Vagudle Daily #{daily_number}",
+        description=(
+            f"No one's played today's daily yet, get a game in before it resets "
+            f"<t:{reset_ts}:R>!"
+        ),
         color=_VAGUDLE_COLOR,
         timestamp=datetime.now(timezone.utc),
     )

@@ -209,6 +209,15 @@ def get_vagudle_embed() -> discord.Embed:
         inline=False,
     )
     embed.add_field(
+        name="🗓️ Daily Mode",
+        value=(
+            "One shared word for everyone each day — difficulty and word length change "
+            "with the day of the week. Play at "
+            "**[vagudle.king-tajin.dev/daily](https://vagudle.king-tajin.dev/daily)**"
+        ),
+        inline=False,
+    )
+    embed.add_field(
         name="📂 Open Source",
         value="[github.com/King-Tajin/Vagudle](https://github.com/King-Tajin/Vagudle)",
         inline=False,
@@ -227,6 +236,20 @@ def get_challenge_embed() -> discord.Embed:
         color=0x5000AA,
     )
     embed.set_footer(text="Challenge results don't affect the recipient's stats.")
+    return embed
+
+
+def get_daily_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="🗓️ Vagudle Daily",
+        description=(
+            "Everyone gets the same word each day. Track your group's progress and build "
+            "a win streak together!\n\n"
+            "**[▶ Play today's Daily](https://vagudle.king-tajin.dev/daily)**"
+        ),
+        color=0x5000AA,
+    )
+    embed.set_footer(text="A new word drops every day.")
     return embed
 
 

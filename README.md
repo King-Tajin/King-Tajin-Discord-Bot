@@ -35,9 +35,21 @@ Duel links expire after 24 hours. Results do not affect normal game stats.
 
 ---
 
-## Vagudle Leaderboard
+## Vagudle Daily
 
-`/vagudle_leaderboard` displays the duel leaderboard with pagination and toggles for sort mode and difficulty.
+`/vagudle_daily_channel` sets the channel where a server's [Vagudle Daily](https://vagudle.king-tajin.dev/daily) progress and reminders get posted. Requires the Manage Server permission and only works in servers (not DMs).
+
+* **Shared word:** everyone in a group gets the same word each day. Word length and difficulty rotate by weekday.
+* **Live progress board:** the bot posts and keeps editing a single message showing each player's masked guess rows as they play, revealing their full grid once they finish.
+* **Group streaks:** tracked automatically and shown in the progress board footer.
+* **Reminders:** if a recently-active group hasn't played yet, the bot posts a reminder with a live countdown to the next daily reset (08:00 UTC).
+* **DMs:** Daily also works one-on-one in DMs without any channel setup — `/vagudle_daily_channel` is only needed for posting group progress to a server channel.
+
+---
+
+## Vagudle Leaderboards
+
+`/vagudle_duel_leaderboard` displays the duel leaderboard with pagination and toggles for sort mode and difficulty.
 
 * **Columns:** rank, player, matches played, wins, win rate, and unique wins.
 * **Sort:** toggle between ranking by unique wins (default) or total wins. Ties are broken by win rate.
@@ -47,6 +59,14 @@ Duel links expire after 24 hours. Results do not affect normal game stats.
 * **Works anywhere:** usable in servers, DMs, and private channels.
 
 Duel stat summaries are also posted to the stats channel every Monday and Friday at 14:45 UTC when new duels have been played since the last post.
+
+`/vagudle_daily_leaderboard` displays the Vagudle Daily leaderboard.
+
+* **Columns:** rank, player, wins, losses, current streak, and best streak.
+* **Sort:** ranked by best streak, then total wins (fixed, no toggle).
+* **Pages:** 25 players per page with ◀ ▶ navigation.
+* **Lookup:** optional `user` argument, but only works for accounts that signed into Vagudle Daily with Discord — other players won't be found by this lookup.
+* **Works anywhere:** usable in servers, DMs, and private channels.
 
 ---
 

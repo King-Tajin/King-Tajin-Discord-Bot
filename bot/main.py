@@ -37,6 +37,7 @@ from bot.utils.dm_responses import (
     is_vagudle_message,
     get_vagudle_embed,
     get_challenge_embed,
+    get_daily_embed,
 )
 from vagudle_bot.webhook_client import DMWebhookClient
 
@@ -108,7 +109,8 @@ class TajinHelper(commands.Bot):
                     "vagudle_daily_channel",
                     "vagudle_duel",
                     "vagudle_duel_activity",
-                    "vagudle_leaderboard",
+                    "vagudle_duel_leaderboard",
+                    "vagudle_daily_leaderboard",
                 ):
                     self.tree.add_command(cmd)
             await self.tree.sync(guild=guild)
@@ -590,6 +592,7 @@ def create_bot() -> TajinHelper:
         if user_pinged or role_pinged:
             if is_vagudle_message(message):
                 await message.reply(embed=get_vagudle_embed())
+                await message.channel.send(embed=get_daily_embed())
                 await message.channel.send(embed=get_challenge_embed())
             else:
                 await message.reply(embed=get_support_embed())
@@ -602,6 +605,7 @@ def create_bot() -> TajinHelper:
             )
             if is_vagudle_message(message):
                 await message.channel.send(embed=get_vagudle_embed())
+                await message.channel.send(embed=get_daily_embed())
                 await message.channel.send(embed=get_challenge_embed())
             elif is_support_message(message):
                 await message.channel.send(embed=get_support_embed())

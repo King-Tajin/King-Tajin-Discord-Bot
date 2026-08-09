@@ -85,10 +85,9 @@ def setup(bot: TajinHelper) -> None:
         raw_rows = await bot.d1.get_leaderboard(D1_TABLE_DAILY_LEADERBOARD)
         all_rows = process_daily_leaderboard_rows(raw_rows)
 
-        embed, total_pages = await build_daily_leaderboard_embed(bot, all_rows, 1, user)
+        embed, total_pages = await build_daily_leaderboard_embed(all_rows, 1, user)
 
         view = DailyLeaderboardView(
-            bot=bot,
             all_rows=all_rows,
             interaction_user_id=interaction.user.id,
             page=1,

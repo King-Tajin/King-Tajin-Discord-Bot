@@ -1,7 +1,7 @@
 import discord
 from datetime import datetime, timedelta, timezone
 
-DAILY_ICON = "<:favicon:1536064871202820198>"
+VAGUDLE_ICON = "<:favicon:1536064871202820198>"
 
 
 def create_feedback_embed(feedback: dict) -> discord.Embed:
@@ -233,7 +233,7 @@ def build_daily_progress_embed(
     players: dict,
 ) -> discord.Embed:
     embed = discord.Embed(
-        title=f"{DAILY_ICON} Vagudle Daily #{daily_number}",
+        title=f"{VAGUDLE_ICON} Vagudle Daily #{daily_number}",
         description=f"📅 {date_str}",
         color=_VAGUDLE_COLOR,
         timestamp=datetime.now(timezone.utc),
@@ -286,7 +286,7 @@ def build_daily_reminder_embed(daily_number: int, date_str: str) -> discord.Embe
     reset_ts = int(reset_at.timestamp())
 
     embed = discord.Embed(
-        title=f"{DAILY_ICON} Vagudle Daily #{daily_number}",
+        title=f"{VAGUDLE_ICON} Vagudle Daily #{daily_number}",
         description=(
             f"No one's played today's daily yet, get a game in before it resets "
             f"<t:{reset_ts}:R>!"

@@ -3,12 +3,8 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
 
 import discord
-
-if TYPE_CHECKING:
-    from bot.main import TajinHelper
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +66,6 @@ def _format_daily_leaderboard_table(rows: list[dict], start_rank: int) -> str:
 
 
 async def build_daily_leaderboard_embed(
-    bot: TajinHelper,
     all_rows: list[dict],
     page: int,
     lookup_user: discord.User | None = None,
@@ -128,7 +123,6 @@ async def build_daily_leaderboard_embed(
 class DailyLeaderboardView(discord.ui.View):
     def __init__(
         self,
-        bot: TajinHelper,
         all_rows: list[dict],
         interaction_user_id: int,
         page: int = 1,
@@ -136,7 +130,6 @@ class DailyLeaderboardView(discord.ui.View):
         lookup_user: discord.User | None = None,
     ):
         super().__init__(timeout=120)
-        self.bot = bot
         self.all_rows = all_rows
         self.interaction_user_id = interaction_user_id
         self.page = page
@@ -170,7 +163,6 @@ class DailyLeaderboardView(discord.ui.View):
 
     async def _update(self, interaction: discord.Interaction) -> None:
         embed, self.total_pages = await build_daily_leaderboard_embed(
-            self.bot,
             self.all_rows,
             self.page,
             self.lookup_user,

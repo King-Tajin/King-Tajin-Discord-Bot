@@ -3,6 +3,8 @@ import re
 import logging
 import discord
 
+from bot.utils.embeds import VAGUDLE_ICON
+
 logger = logging.getLogger(__name__)
 
 OK_TEXTS = [
@@ -180,7 +182,7 @@ def get_gif_response() -> str:
 
 def get_vagudle_embed() -> discord.Embed:
     embed = discord.Embed(
-        title="🎮 Vagudle",
+        title=f"{VAGUDLE_ICON} Vagudle",
         description=(
             "A word-guessing game more challenging than Wordle: cells don't color automatically, you paint what you can figure out from the limited clues you have.\n\n"
             "**[▶ Play at vagudle.king-tajin.dev](https://vagudle.king-tajin.dev)**"

@@ -2,6 +2,7 @@ import discord
 from datetime import datetime, timedelta, timezone
 
 VAGUDLE_ICON = "<:favicon:1536064871202820198>"
+VAGUDLE_ICON_V2 = "<:favicon:1536173636413558845>"
 
 
 def create_feedback_embed(feedback: dict) -> discord.Embed:

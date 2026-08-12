@@ -93,6 +93,8 @@ def setup(bot: TajinHelper) -> None:
             word=word,
             difficulty=diff,
             duel_id=duel_id,
+            challenger_name=interaction.user.display_name,
+            opponent_name=opponent_name,
         )
 
         embed = build_duel_invite_embed(
@@ -188,6 +190,8 @@ def setup(bot: TajinHelper) -> None:
             difficulty=diff,
             duel_id=duel_id,
             application_id=app_id,
+            challenger_name=interaction.user.display_name,
+            opponent_name=opponent_name,
         )
 
         embed = build_duel_activity_embed(

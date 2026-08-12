@@ -19,6 +19,13 @@ from bot.utils.duel import (
 logger = logging.getLogger(__name__)
 
 DUEL_INVITE_EXPIRY_HOURS = 24
+MAX_BUTTON_NAME_LENGTH = 32
+
+
+def _short_name(name: str) -> str:
+    if len(name) <= MAX_BUTTON_NAME_LENGTH:
+        return name
+    return name[: MAX_BUTTON_NAME_LENGTH - 1] + "…"
 
 
 def build_duel_invite_embed(
@@ -46,7 +53,10 @@ def build_duel_invite_embed(
     embed.add_field(name="Difficulty", value=diff_label, inline=True)
     embed.add_field(name="Word Length", value=f"{word_length} letters", inline=True)
     embed.add_field(name="Guesses", value=str(guesses), inline=True)
-    embed.set_footer(text="Results won't affect your stats. Links expire in 24 hours.")
+    embed.set_footer(
+        text=f"{challenger.display_name}, click your button below for your link. "
+        "Results won't affect your stats. Links expire in 24 hours."
+    )
     return embed
 
 
@@ -74,7 +84,7 @@ def build_duel_activity_embed(
     embed.add_field(name="Word Length", value=f"{word_length} letters", inline=True)
     embed.add_field(name="Guesses", value=str(guesses), inline=True)
     embed.set_footer(
-        text="Join a voice channel or DM call first, then click Open Activity · Expires in 24 hours"
+        text="Join a voice channel or DM call first, then click your button below · Expires in 24 hours"
     )
     return embed
 
@@ -141,6 +151,8 @@ class DuelInviteView(discord.ui.View):
         word: str,
         difficulty: DuelDifficulty,
         duel_id: str,
+        challenger_name: str,
+        opponent_name: str | None = None,
     ):
         super().__init__(timeout=None)
         self.player1_id = player1_id
@@ -148,18 +160,36 @@ class DuelInviteView(discord.ui.View):
         self.word = word
         self.difficulty = difficulty
         self.duel_id = duel_id
+        self.challenger_name = challenger_name
+        self.opponent_name = opponent_name
         self.player1_url: str | None = None
         self.player2_url: str | None = None
         self._lock = asyncio.Lock()
+        self._pending: set[int] = set()
+        self._apply_button_labels()
+
+    def _apply_button_labels(self) -> None:
+        self.player1_btn.label = f"{_short_name(self.challenger_name)}'s Link"
+        if self.opponent_name:
+            self.player2_btn.label = f"Accept as {_short_name(self.opponent_name)}"
+        else:
+            self.player2_btn.label = "Accept Duel"
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item
     ) -> None:
         logger.error(f"DuelInviteView error: {error}")
         try:
-            await interaction.response.send_message(
-                "Something went wrong. Please try again.", ephemeral=True
-            )
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    "Something went wrong. Please click the button again to retry.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    "Something went wrong. Please click the button again to retry.",
+                    ephemeral=True,
+                )
         except discord.HTTPException:
             pass
 
@@ -178,7 +208,7 @@ class DuelInviteView(discord.ui.View):
     async def _check_expired(self, interaction: discord.Interaction) -> bool:
         if interaction.message and _is_duel_invite_expired(interaction.message):
             await self._disable_buttons(interaction)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "⏰ This duel invite has expired. Use `/vagudle_duel` to start a new one.",
                 ephemeral=True,
             )
@@ -205,6 +235,41 @@ class DuelInviteView(discord.ui.View):
         )
         return build_duel_url(Config.VAGUDLE_URL, encoded)
 
+    async def _get_or_create_link(
+        self, interaction: discord.Interaction, discord_id: int, cached: str | None
+    ) -> str | None:
+        if cached is not None:
+            return cached
+
+        resolved = await self._resolve_url(interaction, discord_id)
+        if resolved is not None:
+            return resolved
+
+        generated_at = datetime.now(timezone.utc)
+        created_at_ms = int(generated_at.timestamp() * 1000)
+        encoded = encode_duel(
+            self.word, self.difficulty, self.duel_id, str(discord_id), created_at_ms
+        )
+        url = build_duel_url(Config.VAGUDLE_URL, encoded)
+
+        cfg = DIFFICULTY_CONFIG[self.difficulty]
+        stored = await interaction.client.d1.insert_duel_stub(
+            duel_id=self.duel_id,
+            discord_id=str(discord_id),
+            word=self.word,
+            word_length=len(self.word),
+            dict_type=cfg["dict"],
+            max_guesses=cfg["guesses"],
+            generated_at=generated_at.isoformat(),
+        )
+        if not stored:
+            logger.warning(
+                f"DuelInviteView: failed to store duel stub for {discord_id}, duel {self.duel_id}"
+            )
+            return None
+
+        return url
+
     @discord.ui.button(label="Get My Link", style=discord.ButtonStyle.primary)
     async def player1_btn(
         self, interaction: discord.Interaction, _button: discord.ui.Button
@@ -215,64 +280,45 @@ class DuelInviteView(discord.ui.View):
             )
             return
 
-        if await self._check_expired(interaction):
+        if interaction.user.id in self._pending:
+            await interaction.response.send_message(
+                "Still working on your last click — one sec.", ephemeral=True
+            )
             return
 
-        async with self._lock:
-            cached = self.player1_url
+        self._pending.add(interaction.user.id)
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
 
-        if cached is None:
-            cached = await self._resolve_url(interaction, self.player1_id)
-            if cached is not None:
-                async with self._lock:
-                    self.player1_url = cached
+            if await self._check_expired(interaction):
+                return
 
-        if cached is not None:
-            await interaction.response.send_message(
-                f"Here's your duel link — keep it private!\n{cached}",
+            async with self._lock:
+                cached = self.player1_url
+
+            url = await self._get_or_create_link(interaction, self.player1_id, cached)
+
+            if url is None:
+                await interaction.followup.send(
+                    "Couldn't generate your link due to a connection hiccup. "
+                    "Click the button again to retry.",
+                    ephemeral=True,
+                )
+                return
+
+            async with self._lock:
+                self.player1_url = url
+                both_done = self.player2_url is not None
+
+            await interaction.followup.send(
+                f"Here's your duel link — keep it private!\n{url}",
                 ephemeral=True,
             )
-            async with self._lock:
-                both_done = self.player2_url is not None
+
             if both_done:
                 await self._disable_buttons(interaction)
-            return
-
-        generated_at = datetime.now(timezone.utc)
-        created_at_ms = int(generated_at.timestamp() * 1000)
-        encoded = encode_duel(
-            self.word,
-            self.difficulty,
-            self.duel_id,
-            str(self.player1_id),
-            created_at_ms,
-        )
-        url = build_duel_url(Config.VAGUDLE_URL, encoded)
-
-        async with self._lock:
-            self.player1_url = url
-
-        cfg = DIFFICULTY_CONFIG[self.difficulty]
-        await interaction.client.d1.insert_duel_stub(
-            duel_id=self.duel_id,
-            discord_id=str(self.player1_id),
-            word=self.word,
-            word_length=len(self.word),
-            dict_type=cfg["dict"],
-            max_guesses=cfg["guesses"],
-            generated_at=generated_at.isoformat(),
-        )
-
-        await interaction.response.send_message(
-            f"Here's your duel link — keep it private!\n{url}",
-            ephemeral=True,
-        )
-
-        async with self._lock:
-            both_done = self.player2_url is not None
-
-        if both_done:
-            await self._disable_buttons(interaction)
+        finally:
+            self._pending.discard(interaction.user.id)
 
     @discord.ui.button(label="Accept Duel", style=discord.ButtonStyle.success)
     async def player2_btn(
@@ -284,73 +330,57 @@ class DuelInviteView(discord.ui.View):
             )
             return
 
-        if await self._check_expired(interaction):
+        if interaction.user.id in self._pending:
+            await interaction.response.send_message(
+                "Still working on your last click — one sec.", ephemeral=True
+            )
             return
 
-        async with self._lock:
-            if self.player2_id is not None and interaction.user.id != self.player2_id:
-                await interaction.response.send_message(
-                    "This duel challenge is not for you.", ephemeral=True
+        self._pending.add(interaction.user.id)
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+
+            if await self._check_expired(interaction):
+                return
+
+            async with self._lock:
+                if (
+                    self.player2_id is not None
+                    and interaction.user.id != self.player2_id
+                ):
+                    await interaction.followup.send(
+                        "This duel challenge is not for you.", ephemeral=True
+                    )
+                    return
+
+                if self.player2_id is None:
+                    self.player2_id = interaction.user.id
+
+                cached = self.player2_url
+
+            url = await self._get_or_create_link(interaction, self.player2_id, cached)
+
+            if url is None:
+                await interaction.followup.send(
+                    "Couldn't generate your link due to a connection hiccup. "
+                    "Click the button again to retry.",
+                    ephemeral=True,
                 )
                 return
 
-            if self.player2_id is None:
-                self.player2_id = interaction.user.id
+            async with self._lock:
+                self.player2_url = url
+                both_done = self.player1_url is not None
 
-            cached = self.player2_url
-
-        if cached is None:
-            cached = await self._resolve_url(interaction, self.player2_id)
-            if cached is not None:
-                async with self._lock:
-                    self.player2_url = cached
-
-        if cached is not None:
-            await interaction.response.send_message(
-                f"You've accepted the duel! Here's your link — keep it private!\n{cached}",
+            await interaction.followup.send(
+                f"You've accepted the duel! Here's your link — keep it private!\n{url}",
                 ephemeral=True,
             )
-            async with self._lock:
-                both_done = self.player1_url is not None
+
             if both_done:
                 await self._disable_buttons(interaction)
-            return
-
-        generated_at = datetime.now(timezone.utc)
-        created_at_ms = int(generated_at.timestamp() * 1000)
-        encoded = encode_duel(
-            self.word,
-            self.difficulty,
-            self.duel_id,
-            str(self.player2_id),
-            created_at_ms,
-        )
-        url = build_duel_url(Config.VAGUDLE_URL, encoded)
-
-        async with self._lock:
-            self.player2_url = url
-
-        cfg = DIFFICULTY_CONFIG[self.difficulty]
-        await interaction.client.d1.insert_duel_stub(
-            duel_id=self.duel_id,
-            discord_id=str(self.player2_id),
-            word=self.word,
-            word_length=len(self.word),
-            dict_type=cfg["dict"],
-            max_guesses=cfg["guesses"],
-            generated_at=generated_at.isoformat(),
-        )
-
-        await interaction.response.send_message(
-            f"You've accepted the duel! Here's your link — keep it private!\n{url}",
-            ephemeral=True,
-        )
-
-        async with self._lock:
-            both_done = self.player1_url is not None
-
-        if both_done:
-            await self._disable_buttons(interaction)
+        finally:
+            self._pending.discard(interaction.user.id)
 
 
 class DuelActivityView(discord.ui.View):
@@ -362,6 +392,8 @@ class DuelActivityView(discord.ui.View):
         difficulty: DuelDifficulty,
         duel_id: str,
         application_id: int,
+        challenger_name: str,
+        opponent_name: str | None = None,
     ):
         super().__init__(timeout=None)
         self.player1_id = player1_id
@@ -370,18 +402,36 @@ class DuelActivityView(discord.ui.View):
         self.difficulty = difficulty
         self.duel_id = duel_id
         self.application_id = application_id
+        self.challenger_name = challenger_name
+        self.opponent_name = opponent_name
         self.player1_invite_url: str | None = None
         self.player2_invite_url: str | None = None
         self._lock = asyncio.Lock()
+        self._pending: set[int] = set()
+        self._apply_button_labels()
+
+    def _apply_button_labels(self) -> None:
+        self.player1_btn.label = f"{_short_name(self.challenger_name)}: Open Activity"
+        if self.opponent_name:
+            self.player2_btn.label = f"Accept as {_short_name(self.opponent_name)}"
+        else:
+            self.player2_btn.label = "Accept & Open Activity"
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item
     ) -> None:
         logger.error(f"DuelActivityView error: {error}")
         try:
-            await interaction.response.send_message(
-                "Something went wrong. Please try again.", ephemeral=True
-            )
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    "Something went wrong. Please click the button again to retry.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    "Something went wrong. Please click the button again to retry.",
+                    ephemeral=True,
+                )
         except discord.HTTPException:
             pass
 
@@ -400,7 +450,7 @@ class DuelActivityView(discord.ui.View):
     async def _check_expired(self, interaction: discord.Interaction) -> bool:
         if interaction.message and _is_duel_invite_expired(interaction.message):
             await self._disable_buttons(interaction)
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "⏰ This duel invite has expired. Use `/vagudle_duel_activity` to start a new one.",
                 ephemeral=True,
             )
@@ -418,11 +468,11 @@ class DuelActivityView(discord.ui.View):
         launch_view.add_item(
             discord.ui.Button(
                 style=discord.ButtonStyle.link,
-                label="▶ Open Activity",
+                label="Open Activity",
                 url=invite_url,
             )
         )
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Click below to open the activity!",
             view=launch_view,
             ephemeral=True,
@@ -436,12 +486,12 @@ class DuelActivityView(discord.ui.View):
         channel_id = _get_activity_channel_id(interaction)
         if channel_id is None:
             if interaction.guild is None:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ Activities can't be launched from a DM — Discord doesn't allow bots to create activity invites for DM calls. Join a server voice channel and use the command there instead.",
                     ephemeral=True,
                 )
             else:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ You need to be in a voice channel to launch the activity.",
                     ephemeral=True,
                 )
@@ -451,8 +501,9 @@ class DuelActivityView(discord.ui.View):
             interaction, channel_id, self.application_id
         )
         if invite_code is None:
-            await interaction.response.send_message(
-                f"❌ Failed to create the activity invite: {invite_error}",
+            await interaction.followup.send(
+                f"❌ Failed to create the activity invite: {invite_error}\n"
+                "Click the button again to retry.",
                 ephemeral=True,
             )
             return None
@@ -478,7 +529,7 @@ class DuelActivityView(discord.ui.View):
                 f"DuelActivityView: KV write failed for channel {channel_id}, duel {self.duel_id}"
             )
 
-        await interaction.client.d1.insert_duel_stub(
+        stub_stored = await interaction.client.d1.insert_duel_stub(
             duel_id=self.duel_id,
             discord_id=str(discord_id),
             word=self.word,
@@ -487,18 +538,25 @@ class DuelActivityView(discord.ui.View):
             max_guesses=cfg["guesses"],
             generated_at=generated_at,
         )
+        if not stored or not stub_stored:
+            await interaction.followup.send(
+                "❌ Couldn't fully set up the activity due to a connection hiccup. "
+                "Click the button again to retry.",
+                ephemeral=True,
+            )
+            return None
 
         invite_url = f"https://discord.gg/{invite_code}"
         launch_view = discord.ui.View()
         launch_view.add_item(
             discord.ui.Button(
                 style=discord.ButtonStyle.link,
-                label="▶ Open Activity",
+                label="Open Activity",
                 url=invite_url,
             )
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Click below to open the activity!",
             view=launch_view,
             ephemeral=True,
@@ -519,25 +577,37 @@ class DuelActivityView(discord.ui.View):
             )
             return
 
-        if await self._check_expired(interaction):
+        if interaction.user.id in self._pending:
+            await interaction.response.send_message(
+                "Still working on your last click — one sec.", ephemeral=True
+            )
             return
 
-        async with self._lock:
-            cached = self.player1_invite_url
+        self._pending.add(interaction.user.id)
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
 
-        if cached is not None:
-            await self._send_cached_invite(interaction, cached)
-            return
+            if await self._check_expired(interaction):
+                return
 
-        invite_url = await self._launch_activity(interaction, self.player1_id)
-
-        if invite_url is not None:
             async with self._lock:
-                self.player1_invite_url = invite_url
-                both_done = self.player2_invite_url is not None
+                cached = self.player1_invite_url
 
-            if both_done:
-                await self._disable_buttons(interaction)
+            if cached is not None:
+                await self._send_cached_invite(interaction, cached)
+                return
+
+            invite_url = await self._launch_activity(interaction, self.player1_id)
+
+            if invite_url is not None:
+                async with self._lock:
+                    self.player1_invite_url = invite_url
+                    both_done = self.player2_invite_url is not None
+
+                if both_done:
+                    await self._disable_buttons(interaction)
+        finally:
+            self._pending.discard(interaction.user.id)
 
     @discord.ui.button(
         label="Accept & Open Activity", style=discord.ButtonStyle.success
@@ -551,31 +621,46 @@ class DuelActivityView(discord.ui.View):
             )
             return
 
-        if await self._check_expired(interaction):
+        if interaction.user.id in self._pending:
+            await interaction.response.send_message(
+                "Still working on your last click — one sec.", ephemeral=True
+            )
             return
 
-        async with self._lock:
-            if self.player2_id is not None and interaction.user.id != self.player2_id:
-                await interaction.response.send_message(
-                    "This duel challenge is not for you.", ephemeral=True
-                )
+        self._pending.add(interaction.user.id)
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+
+            if await self._check_expired(interaction):
                 return
 
-            if self.player2_id is None:
-                self.player2_id = interaction.user.id
-
-            cached = self.player2_invite_url
-
-        if cached is not None:
-            await self._send_cached_invite(interaction, cached)
-            return
-
-        invite_url = await self._launch_activity(interaction, self.player2_id)
-
-        if invite_url is not None:
             async with self._lock:
-                self.player2_invite_url = invite_url
-                both_done = self.player1_invite_url is not None
+                if (
+                    self.player2_id is not None
+                    and interaction.user.id != self.player2_id
+                ):
+                    await interaction.followup.send(
+                        "This duel challenge is not for you.", ephemeral=True
+                    )
+                    return
 
-            if both_done:
-                await self._disable_buttons(interaction)
+                if self.player2_id is None:
+                    self.player2_id = interaction.user.id
+
+                cached = self.player2_invite_url
+
+            if cached is not None:
+                await self._send_cached_invite(interaction, cached)
+                return
+
+            invite_url = await self._launch_activity(interaction, self.player2_id)
+
+            if invite_url is not None:
+                async with self._lock:
+                    self.player2_invite_url = invite_url
+                    both_done = self.player1_invite_url is not None
+
+                if both_done:
+                    await self._disable_buttons(interaction)
+        finally:
+            self._pending.discard(interaction.user.id)

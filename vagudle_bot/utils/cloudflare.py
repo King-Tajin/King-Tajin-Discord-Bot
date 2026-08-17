@@ -1,8 +1,10 @@
-import aiohttp
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Optional, Dict
+
+import aiohttp
+
 from vagudle_bot.config import Config
 
 logger = logging.getLogger(__name__)

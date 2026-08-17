@@ -7,7 +7,6 @@ load_dotenv()
 class Config:
     BOT_TOKEN = os.getenv("VAGUDLE_BOT_TOKEN")
     STATUS_TEXT = os.getenv("VAGUDLE_BOT_STATUS_TEXT")
-    GUILD_ID = int(os.getenv("GUILD_ID", 0)) or None
     CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
     CLOUDFLARE_NAMESPACE_ID = os.getenv("CLOUDFLARE_NAMESPACE_ID")
     CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")

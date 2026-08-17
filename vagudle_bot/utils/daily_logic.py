@@ -80,13 +80,21 @@ async def _get_channel(
     bot: VagudleBot, channel_id: str
 ) -> discord.abc.Messageable | None:
     channel = bot.get_channel(int(channel_id))
-    if channel is not None:
-        return channel
-    try:
-        return await bot.fetch_channel(int(channel_id))
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
-        logger.warning(f"_get_channel: could not fetch channel {channel_id}: {e}")
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(int(channel_id))
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+            logger.warning(f"_get_channel: could not fetch channel {channel_id}: {e}")
+            return None
+
+    if not isinstance(channel, discord.abc.Messageable):
+        logger.warning(
+            f"_get_channel: channel {channel_id} is a {type(channel).__name__}, "
+            f"which is not messageable"
+        )
         return None
+
+    return channel
 
 
 async def _render_and_sync_message(
@@ -128,7 +136,7 @@ async def _render_and_sync_message(
 
     if message_id:
         try:
-            message = await channel.fetch_message(int(message_id))
+            message = await channel.fetch_message(int(str(message_id)))
             await message.edit(embed=embed)
             await bot.kv.store_daily_progress(group_id, date_str, progress)
             return

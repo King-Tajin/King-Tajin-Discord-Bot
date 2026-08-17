@@ -21,6 +21,7 @@ from vagudle_bot.utils.embeds import (
     get_challenge_embed,
     get_daily_embed,
 )
+from vagudle_bot.utils.command_sync import sync_preserving_entry_point
 
 import vagudle_bot.commands.challenge as cmd_challenge
 import vagudle_bot.commands.daily as cmd_daily
@@ -35,8 +36,6 @@ _STALE_DUEL_DM_BATCH = 10
 class VagudleBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        # noinspection PyDunderSlots,PyUnresolvedReferences
-        intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
 
         self.kv: CloudflareKV | None = None
@@ -57,18 +56,8 @@ class VagudleBot(commands.Bot):
         cmd_duel.setup(self)
         cmd_leaderboard.setup(self)
 
-        if Config.GUILD_ID:
-            guild = discord.Object(id=Config.GUILD_ID)
-            all_commands = list(self.tree.get_commands())
-            self.tree.clear_commands(guild=guild)
-            for cmd in all_commands:
-                self.tree.add_command(cmd, guild=guild)
-            await self.tree.sync(guild=guild)
-            await self.tree.sync()
-            logger.info("Synced slash commands to guild and globally")
-        else:
-            await self.tree.sync()
-            logger.info("Synced slash commands globally")
+        await sync_preserving_entry_point(self)
+        logger.info("Synced slash commands globally")
 
         self.update_duel_stats.start()
         self.cleanup_stale_duels.start()

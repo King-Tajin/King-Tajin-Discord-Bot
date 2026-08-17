@@ -3,7 +3,7 @@ from functools import cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from bot.utils.encoding import generate_id, aes_gcm_encode
+from vagudle_bot.utils.encoding import generate_id, aes_gcm_encode
 
 ChallengeDict = Literal["normal", "hard", "full"]
 

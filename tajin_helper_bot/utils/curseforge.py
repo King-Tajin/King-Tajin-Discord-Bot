@@ -10,7 +10,7 @@ from playwright.async_api import (
     ViewportSize,
     Error as PlaywrightError,
 )
-from bot.config import Config
+from tajin_helper_bot.config import Config
 
 logger = logging.getLogger(__name__)
 

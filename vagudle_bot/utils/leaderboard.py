@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from bot.utils.cloudflare import D1_TABLE_LEADERBOARD_HARD, D1_TABLE_LEADERBOARD_NORMAL
+from vagudle_bot.utils.cloudflare import (
+    D1_TABLE_LEADERBOARD_HARD,
+    D1_TABLE_LEADERBOARD_NORMAL,
+)
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +41,7 @@ def _sort_leaderboard(rows: list[dict], sort_by: str) -> list[dict]:
     return sorted(rows, key=lambda r: (-r["matches_won"], -r["win_rate"]))
 
 
-async def _resolve_usernames(
-    bot: TajinHelper, discord_ids: list[str]
-) -> dict[str, str]:
+async def _resolve_usernames(bot: VagudleBot, discord_ids: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     to_fetch: list[str] = []
 
@@ -88,7 +89,7 @@ def _format_leaderboard_table(
 
 
 async def build_leaderboard_embed(
-    bot: TajinHelper,
+    bot: VagudleBot,
     all_rows: list[dict],
     page: int,
     sort_by: str,
@@ -159,7 +160,7 @@ async def build_leaderboard_embed(
 class LeaderboardView(discord.ui.View):
     def __init__(
         self,
-        bot: TajinHelper,
+        bot: VagudleBot,
         all_rows: list[dict],
         interaction_user_id: int,
         sort_by: str = "unique",

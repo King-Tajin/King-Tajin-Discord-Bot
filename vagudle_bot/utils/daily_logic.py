@@ -7,18 +7,19 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
 import aiohttp
+import discord
 from aiohttp import web
 
-from bot.config import Config
-from bot.utils.duel import DIFFICULTY_CONFIG
-from bot.utils.embeds import (
+from vagudle_bot.config import Config
+from vagudle_bot.utils.duel import DIFFICULTY_CONFIG
+from vagudle_bot.utils.embeds import (
     add_group_streak_footer,
     build_daily_progress_embed,
     build_daily_reminder_embed,
 )
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def compute_daily_number(date_str: str) -> int:
 
 
 async def _resolve_post_channel_id(
-    bot: TajinHelper, group_id: str, group_type: str
+    bot: VagudleBot, group_id: str, group_type: str
 ) -> Optional[str]:
     if group_type == "server":
         channel_id = await bot.kv.get_daily_channel(group_id)
@@ -75,8 +76,21 @@ async def _resolve_post_channel_id(
     return group_id
 
 
+async def _get_channel(
+    bot: VagudleBot, channel_id: str
+) -> discord.abc.Messageable | None:
+    channel = bot.get_channel(int(channel_id))
+    if channel is not None:
+        return channel
+    try:
+        return await bot.fetch_channel(int(channel_id))
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+        logger.warning(f"_get_channel: could not fetch channel {channel_id}: {e}")
+        return None
+
+
 async def _render_and_sync_message(
-    bot: TajinHelper,
+    bot: VagudleBot,
     group_id: str,
     group_type: str,
     date_str: str,
@@ -97,14 +111,6 @@ async def _render_and_sync_message(
         daily_number, date_str, word_length, max_guesses, render_players
     )
     add_group_streak_footer(embed, streak)
-    embed_dict = dict(embed.to_dict())
-
-    if bot.dm_client is None:
-        logger.error(
-            "_render_and_sync_message: vagudle bot client not configured "
-            "(VAGUDLE_WORKER_URL/VAGUDLE_WORKER_SECRET) — cannot post daily progress"
-        )
-        return
 
     channel_id = progress.get("channel_id")
     if not channel_id:
@@ -114,36 +120,40 @@ async def _render_and_sync_message(
         progress["channel_id"] = str(channel_id)
     channel_id = str(channel_id)
 
+    channel = await _get_channel(bot, channel_id)
+    if channel is None:
+        return
+
     message_id = progress.get("message_id")
 
     if message_id:
-        message_id = str(message_id)
-        result = await bot.dm_client.edit_channel_message(
-            channel_id, message_id, embed=embed_dict
-        )
-        if result.get("success"):
+        try:
+            message = await channel.fetch_message(int(message_id))
+            await message.edit(embed=embed)
             await bot.kv.store_daily_progress(group_id, date_str, progress)
             return
-        if not result.get("not_found"):
+        except discord.NotFound:
+            pass
+        except (discord.Forbidden, discord.HTTPException) as e:
             logger.warning(
                 f"_render_and_sync_message: failed to edit message {message_id} "
-                f"in channel {channel_id}: {result.get('error')}"
+                f"in channel {channel_id}: {e}"
             )
             return
 
-    result = await bot.dm_client.send_channel_message(channel_id, embed=embed_dict)
-    if not result.get("success"):
+    try:
+        message = await channel.send(embed=embed)
+    except (discord.Forbidden, discord.HTTPException) as e:
         logger.error(
-            f"_render_and_sync_message: failed to send message to channel {channel_id}: "
-            f"{result.get('error')}"
+            f"_render_and_sync_message: failed to send message to channel {channel_id}: {e}"
         )
         return
 
-    progress["message_id"] = str(result["message_id"])
+    progress["message_id"] = str(message.id)
     await bot.kv.store_daily_progress(group_id, date_str, progress)
 
 
-async def handle_daily_started(bot: TajinHelper, data: dict) -> None:
+async def handle_daily_started(bot: VagudleBot, data: dict) -> None:
     uid = data.get("uid")
     discord_id = data.get("discord_id")
     group_id = data.get("group_id")
@@ -185,7 +195,7 @@ async def handle_daily_started(bot: TajinHelper, data: dict) -> None:
         await _render_and_sync_message(bot, group_id, group_type, date_str, progress)
 
 
-async def handle_daily_guess(bot: TajinHelper, data: dict) -> None:
+async def handle_daily_guess(bot: VagudleBot, data: dict) -> None:
     uid = data.get("uid")
     discord_id = data.get("discord_id")
     group_id = data.get("group_id")
@@ -232,7 +242,7 @@ async def handle_daily_guess(bot: TajinHelper, data: dict) -> None:
         await _render_and_sync_message(bot, group_id, group_type, date_str, progress)
 
 
-async def handle_daily_finished(bot: TajinHelper, data: dict) -> None:
+async def handle_daily_finished(bot: VagudleBot, data: dict) -> None:
     uid = data.get("uid")
     discord_id = data.get("discord_id")
     group_id = data.get("group_id")
@@ -304,7 +314,7 @@ async def handle_daily_webhook(request: web.Request) -> web.Response:
     if handler is None:
         return web.Response(status=400, text=f"Unknown event '{event}'")
 
-    bot: TajinHelper = request.app["bot"]
+    bot: VagudleBot = request.app["bot"]
     asyncio.create_task(handler(bot, data))
 
     logger.info(
@@ -313,13 +323,7 @@ async def handle_daily_webhook(request: web.Request) -> web.Response:
     return web.Response(status=200)
 
 
-async def check_and_send_daily_reminders(bot: TajinHelper) -> None:
-    if bot.dm_client is None:
-        logger.error(
-            "check_and_send_daily_reminders: vagudle bot client not configured, skipping"
-        )
-        return
-
+async def check_and_send_daily_reminders(bot: VagudleBot) -> None:
     today = datetime.now(timezone.utc).date()
     today_str = today.isoformat()
     cutoff_str = (today - timedelta(days=3)).isoformat()
@@ -332,7 +336,6 @@ async def check_and_send_daily_reminders(bot: TajinHelper) -> None:
 
     daily_number = compute_daily_number(today_str)
     embed = build_daily_reminder_embed(daily_number, today_str)
-    embed_dict = dict(embed.to_dict())
 
     for row in recently_active_groups:
         group_id = str(row["group_id"])
@@ -345,11 +348,16 @@ async def check_and_send_daily_reminders(bot: TajinHelper) -> None:
         if not channel_id:
             continue
 
-        result = await bot.dm_client.send_channel_message(channel_id, embed=embed_dict)
-        if not result.get("success"):
+        channel = await _get_channel(bot, channel_id)
+        if channel is None:
+            continue
+
+        try:
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException) as e:
             logger.warning(
                 f"check_and_send_daily_reminders: failed to post reminder to channel "
-                f"{channel_id} for group {group_id}: {result.get('error')}"
+                f"{channel_id} for group {group_id}: {e}"
             )
 
     ok = await bot.d1.delete_old_daily_attempts()

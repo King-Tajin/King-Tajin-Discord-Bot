@@ -5,15 +5,15 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from bot.config import Config
-from bot.utils.curseforge import get_curseforge_stats
-from bot.utils.embeds import create_curseforge_embed, create_modrinth_embed
-from bot.utils.helpers import check_guild
-from bot.utils.modrinth import get_modrinth_stats
-from bot.utils.stats_helpers import CF_STATS_TITLE, MR_STATS_TITLE
+from tajin_helper_bot.config import Config
+from tajin_helper_bot.utils.curseforge import get_curseforge_stats
+from tajin_helper_bot.utils.embeds import create_curseforge_embed, create_modrinth_embed
+from tajin_helper_bot.utils.helpers import check_guild
+from tajin_helper_bot.utils.modrinth import get_modrinth_stats
+from tajin_helper_bot.utils.stats_helpers import CF_STATS_TITLE, MR_STATS_TITLE
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from tajin_helper_bot.main import TajinHelper
 
 logger = logging.getLogger(__name__)
 

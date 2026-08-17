@@ -1,4 +1,3 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,19 +21,13 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Environment
 .env
 .venv
-
-# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 /pi-stats/.wrangler/

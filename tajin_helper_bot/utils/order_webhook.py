@@ -8,11 +8,11 @@ import aiohttp
 import discord
 from aiohttp import web
 
-from bot.config import Config
-from bot.utils.embeds import create_order_embed
+from tajin_helper_bot.config import Config
+from tajin_helper_bot.utils.embeds import create_order_embed
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from tajin_helper_bot.main import TajinHelper
 
 logger = logging.getLogger(__name__)
 
@@ -70,3 +70,16 @@ async def handle_order_webhook(request: web.Request) -> web.Response:
 
 def register_order_routes(app: web.Application) -> None:
     app.router.add_post("/webhook/order", handle_order_webhook)
+
+
+async def start_webhook_server(bot: TajinHelper) -> web.AppRunner:
+    app = web.Application()
+    app["bot"] = bot
+    register_order_routes(app)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", Config.WEBHOOK_PORT)
+    await site.start()
+    logger.info(f"Webhook server listening on port {Config.WEBHOOK_PORT}")
+    return runner

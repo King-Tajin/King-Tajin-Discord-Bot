@@ -6,15 +6,15 @@ from typing import Optional, TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from bot.utils.embeds import (
+from tajin_helper_bot.utils.embeds import (
     create_feedback_embed,
     create_feedback_list_embed,
     create_stats_embed,
 )
-from bot.utils.helpers import check_guild
+from tajin_helper_bot.utils.helpers import check_guild
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from tajin_helper_bot.main import TajinHelper
 
 logger = logging.getLogger(__name__)
 

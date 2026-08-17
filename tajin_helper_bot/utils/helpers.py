@@ -1,5 +1,5 @@
 import discord
-from bot.config import Config
+from tajin_helper_bot.config import Config
 
 
 async def check_guild(interaction: discord.Interaction) -> bool:

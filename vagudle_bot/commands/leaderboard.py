@@ -6,25 +6,28 @@ from typing import Optional, TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from bot.utils.cloudflare import D1_TABLE_DAILY_LEADERBOARD, D1_TABLE_LEADERBOARD_NORMAL
-from bot.utils.daily_leaderboard import (
+from vagudle_bot.utils.cloudflare import (
+    D1_TABLE_DAILY_LEADERBOARD,
+    D1_TABLE_LEADERBOARD_NORMAL,
+)
+from vagudle_bot.utils.daily_leaderboard import (
     DailyLeaderboardView,
     build_daily_leaderboard_embed,
     process_daily_leaderboard_rows,
 )
-from bot.utils.leaderboard import (
+from vagudle_bot.utils.leaderboard import (
     LeaderboardView,
     build_leaderboard_embed,
     process_leaderboard_rows,
 )
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
 
-def setup(bot: TajinHelper) -> None:
+def setup(bot: VagudleBot) -> None:
     @bot.tree.command(
         name="vagudle_duel_leaderboard",
         description="View the Vagudle duel leaderboard",

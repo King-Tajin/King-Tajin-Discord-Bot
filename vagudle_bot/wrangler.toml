@@ -1,3 +1,0 @@
-name = "vagudle-bot-worker"
-main = "worker_index.js"
-compatibility_date = "2025-05-26"

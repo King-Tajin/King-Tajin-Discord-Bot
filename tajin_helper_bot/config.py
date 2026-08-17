@@ -9,27 +9,14 @@ class Config:
     CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
     CLOUDFLARE_NAMESPACE_ID = os.getenv("CLOUDFLARE_NAMESPACE_ID")
     CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
-    CLOUDFLARE_D1_DATABASE_ID = os.getenv("CLOUDFLARE_D1_DATABASE_ID")
     STATS_CHANNEL_ID = int(os.getenv("STATS_CHANNEL_ID", 0)) or None
     FEEDBACK_CHANNEL_ID = int(os.getenv("FEEDBACK_CHANNEL_ID", 0)) or None
     SUPPORT_ROLE_ID = int(os.getenv("SUPPORT_ROLE_ID", 0)) or None
     GUILD_ID = int(os.getenv("GUILD_ID", 0)) or None
     CURSEFORGE_API_KEY = os.getenv("CURSEFORGE_API_KEY")
     CURSEFORGE_AUTHOR_ID = os.getenv("CURSEFORGE_AUTHOR_ID")
-    VAGUDLE_URL = "https://vagudle.king-tajin.dev"
-    CHALLENGE_KEY = os.getenv("CHALLENGE_KEY", "test")
-    DUEL_WEBHOOK_SECRET = os.getenv("DUEL_WEBHOOK_SECRET")
-    DUEL_WEBHOOK_PORT = int(os.getenv("DUEL_WEBHOOK_PORT", 8079))
     ORDER_WEBHOOK_SECRET = os.getenv("ORDER_WEBHOOK_SECRET")
-    DAILY_WEBHOOK_SECRET = os.getenv("DAILY_WEBHOOK_SECRET")
-    DAILY_EPOCH_DATE = os.getenv("DAILY_EPOCH_DATE", "2026-07-27")
-    VAGUDLE_WORKER_URL = os.getenv("VAGUDLE_WORKER_URL")
-    VAGUDLE_WORKER_SECRET = os.getenv("VAGUDLE_WORKER_SECRET")
-
-    _raw_activity_app_id = os.getenv("ACTIVITY_APP_ID")
-    ACTIVITY_APP_ID: int | None = (
-        int(_raw_activity_app_id) if _raw_activity_app_id else None
-    )
+    WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", 8079))
 
     @classmethod
     def validate(cls):
@@ -38,9 +25,6 @@ class Config:
             ("CLOUDFLARE_ACCOUNT_ID", cls.CLOUDFLARE_ACCOUNT_ID),
             ("CLOUDFLARE_NAMESPACE_ID", cls.CLOUDFLARE_NAMESPACE_ID),
             ("CLOUDFLARE_API_TOKEN", cls.CLOUDFLARE_API_TOKEN),
-            ("DUEL_WEBHOOK_SECRET", cls.DUEL_WEBHOOK_SECRET),
-            ("ACTIVITY_APP_ID", cls.ACTIVITY_APP_ID),
-            ("DAILY_WEBHOOK_SECRET", cls.DAILY_WEBHOOK_SECRET),
         ]
 
         missing = [name for name, value in required if not value]

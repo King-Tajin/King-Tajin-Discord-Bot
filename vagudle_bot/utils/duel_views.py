@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord.http import Route
 
-from bot.config import Config
-from bot.utils.duel import (
+from vagudle_bot.config import Config
+from vagudle_bot.utils.duel import (
     DIFFICULTY_CONFIG,
     DIFFICULTY_LABELS,
     DuelDifficulty,

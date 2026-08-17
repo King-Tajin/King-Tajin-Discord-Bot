@@ -5,7 +5,7 @@ import random
 import string
 import time
 
-from bot.config import Config
+from vagudle_bot.config import Config
 
 _KEY: str = Config.CHALLENGE_KEY
 

@@ -6,15 +6,15 @@ from typing import Optional, TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from bot.config import Config
+from vagudle_bot.config import Config
 
-from bot.utils.duel import (
+from vagudle_bot.utils.duel import (
     DIFFICULTY_LABELS,
     DuelDifficulty,
     generate_duel_id,
     get_random_word,
 )
-from bot.utils.duel_views import (
+from vagudle_bot.utils.duel_views import (
     DuelActivityView,
     DuelInviteView,
     build_duel_activity_embed,
@@ -22,12 +22,12 @@ from bot.utils.duel_views import (
 )
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
 
-def setup(bot: TajinHelper) -> None:
+def setup(bot: VagudleBot) -> None:
     @bot.tree.command(
         name="vagudle_duel",
         description="Challenge someone to a Vagudle duel with a randomly chosen word",

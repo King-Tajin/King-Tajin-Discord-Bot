@@ -3,11 +3,9 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
-from bot.config import Config
+from vagudle_bot.config import Config
 
 logger = logging.getLogger(__name__)
-
-FIRST_RUN_LOOKBACK_HOURS = 2
 
 D1_TABLE_DUEL_RESULTS = "duel_results"
 D1_TABLE_LEADERBOARD_NORMAL = "leaderboard_normal"
@@ -102,112 +100,6 @@ class CloudflareKV:
                     )
                 return ok
 
-    async def list_keys(self, prefix: str = "", limit: int = 1000) -> List[Dict]:
-        url = f"{self.base_url}/keys"
-        params: dict[str, int | str] = {"limit": limit}
-        if prefix:
-            params["prefix"] = prefix
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, headers=self.headers, params=params
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    keys = data.get("result", [])
-                    logger.debug(
-                        f"KV list_keys: found {len(keys)} keys with prefix='{prefix}'"
-                    )
-                    return keys
-                logger.warning(
-                    f"KV list_keys: status {response.status} for prefix='{prefix}'"
-                )
-                return []
-
-    async def get_all_feedbacks(self, prefix: str = "feedback_") -> List[Dict]:
-        keys = await self.list_keys(prefix=prefix)
-        feedbacks = []
-
-        for key_info in keys:
-            key = key_info["name"]
-            feedback = await self.get_value(key)
-            if feedback:
-                feedbacks.append(feedback)
-
-        return feedbacks
-
-    async def get_last_feedback_check(self) -> Optional[datetime]:
-        data = await self.get_value("_last_feedback_check")
-        if not data or "ts" not in data:
-            return None
-        try:
-            return datetime.fromisoformat(data["ts"])
-        except ValueError:
-            logger.warning("KV get_last_feedback_check: invalid timestamp format")
-            return None
-
-    async def store_last_feedback_check(self, ts: datetime) -> bool:
-        ok = await self.put_value("_last_feedback_check", {"ts": ts.isoformat()})
-        if ok:
-            logger.debug(f"KV stored last feedback check timestamp: {ts.isoformat()}")
-        return ok
-
-    async def get_new_feedbacks_since(self, since: datetime) -> List[Dict]:
-        all_feedbacks = await self.get_all_feedbacks()
-        logger.debug(
-            f"get_new_feedbacks_since: checking {len(all_feedbacks)} total feedbacks against since={since.isoformat()}"
-        )
-
-        new = []
-        skipped = 0
-        for f in all_feedbacks:
-            submitted = f.get("submittedAt", "")
-            if not submitted:
-                skipped += 1
-                continue
-            try:
-                dt = datetime.fromisoformat(submitted.replace("Z", "+00:00"))
-                if dt > since:
-                    new.append(f)
-            except ValueError:
-                logger.warning(
-                    f"KV get_new_feedbacks_since: unparseable timestamp '{submitted}' in feedback '{f.get('id', '?')}'"
-                )
-                skipped += 1
-                continue
-
-        if skipped:
-            logger.warning(
-                f"KV get_new_feedbacks_since: skipped {skipped} entries with missing/invalid timestamps"
-            )
-
-        logger.info(
-            f"get_new_feedbacks_since: found {len(new)} new out of {len(all_feedbacks)} total"
-        )
-        return sorted(new, key=lambda x: x.get("submittedAt", ""))
-
-    async def add_tag(self, key: str, tag: str) -> bool:
-        feedback = await self.get_value(key)
-        if not feedback:
-            return False
-
-        if "tags" not in feedback:
-            feedback["tags"] = []
-
-        if tag not in feedback["tags"]:
-            feedback["tags"].append(tag)
-            return await self.put_value(key, feedback)
-
-        return True
-
-    async def mark_completed(self, key: str, completed: bool = True) -> bool:
-        feedback = await self.get_value(key)
-        if not feedback:
-            return False
-
-        feedback["completed"] = completed
-        return await self.put_value(key, feedback)
-
     async def increment_duels_played(self) -> bool:
         current = await self.get_value("vagudle_duels_played")
         count = int(current.get("count", 0)) if current else 0
@@ -239,20 +131,6 @@ class CloudflareKV:
                         f"KV store_daily_progress: status {response.status} for group '{group_id}' date '{date}'"
                     )
                 return ok
-
-    async def store_curseforge_stats(self, stats: Dict) -> bool:
-        stats_with_timestamp = {
-            **stats,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-        }
-        return await self.put_value("curseforge_stats", stats_with_timestamp)
-
-    async def store_modrinth_stats(self, stats: Dict) -> bool:
-        stats_with_timestamp = {
-            **stats,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-        }
-        return await self.put_value("modrinth_stats", stats_with_timestamp)
 
 
 class CloudflareD1:

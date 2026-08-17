@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
-from bot.config import Config
-from bot.utils.challenge import (
+from vagudle_bot.config import Config
+from vagudle_bot.utils.challenge import (
     ChallengeDict,
     DICT_DESCRIPTIONS,
     DICT_LABELS,
@@ -19,7 +19,7 @@ from bot.utils.challenge import (
 )
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ class DictSwitchView(discord.ui.View):
                 pass
 
 
-def setup(bot: TajinHelper) -> None:
+def setup(bot: VagudleBot) -> None:
     @bot.tree.command(
         name="vagudle_challenge",
         description="Create a Vagudle challenge — the dictionary only signals word popularity, not difficulty",

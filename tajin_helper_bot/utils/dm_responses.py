@@ -3,8 +3,6 @@ import re
 import logging
 import discord
 
-from bot.utils.embeds import VAGUDLE_ICON_V2
-
 logger = logging.getLogger(__name__)
 
 OK_TEXTS = [
@@ -56,13 +54,6 @@ SUPPORT_KEYWORDS = [
     "review",
 ]
 
-VAGUDLE_KEYWORDS = [
-    "wordle",
-    "vagudle",
-    "hardle",
-    "word-game",
-]
-
 GIF_DOMAINS = re.compile(
     r"https?://(?:www\.)?(?:"
     r"tenor\.com|c\.tenor\.com|media\.tenor\.com"
@@ -98,17 +89,6 @@ def _is_gif_embed(embed) -> bool:
     url = str(embed.url or "")
     if GIF_DOMAINS.search(url):
         return True
-    return False
-
-
-def is_vagudle_message(message) -> bool:
-    content = message.content.strip().lower()
-    for keyword in VAGUDLE_KEYWORDS:
-        if keyword in content:
-            logger.info(
-                f"Vagudle keyword '{keyword}' detected in message from {message.author} (id={message.author.id})"
-            )
-            return True
     return False
 
 
@@ -178,81 +158,6 @@ def get_emoji_response() -> str:
 
 def get_gif_response() -> str:
     return random.choice(OK_GIFS)
-
-
-def get_vagudle_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title=f"{VAGUDLE_ICON_V2} Vagudle",
-        description=(
-            "A word-guessing game more challenging than Wordle: cells don't color automatically, you paint what you can figure out from the limited clues you have.\n\n"
-            "**[▶ Play at vagudle.king-tajin.dev](https://vagudle.king-tajin.dev)**"
-        ),
-        color=0x5000AA,
-    )
-    embed.add_field(
-        name="❓ How It Works:",
-        value=(
-            "Guess a word then select a brush and paint the cells based off the color counts:\n"
-            "🟩 Right letter, right spot\n"
-            "🟨 Right letter, wrong spot\n"
-            "⬛ Letter not in the word"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="✨ Features",
-        value=(
-            "• **Variable word length** — 4 through 7-letter words\n"
-            "• **Unlimited games** — no daily limit\n"
-            "• **Hard mode** — fewer guesses, harder words\n"
-            "• **Auto-Gray / Auto-Green** — optional automation to speed up painting\n"
-            "• **Row badges** — live count of green, yellow, and gray tiles per row"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="🗓️ Daily Mode",
-        value=(
-            "One shared word for everyone each day — difficulty and word length change "
-            "with the day of the week. Play at "
-            "**[vagudle.king-tajin.dev/daily](https://vagudle.king-tajin.dev/daily)**"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="📂 Open Source",
-        value="[github.com/King-Tajin/Vagudle](https://github.com/King-Tajin/Vagudle)",
-        inline=False,
-    )
-    embed.set_footer(text="vagudle.king-tajin.dev · King-Tajin")
-    return embed
-
-
-def get_challenge_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title="⚔️ Challenge a Friend",
-        description=(
-            "Want to put someone to the test? Use `/vagudle_challenge` to pick a secret word "
-            "and generate a custom challenge link, works in both DMs and servers!"
-        ),
-        color=0x5000AA,
-    )
-    embed.set_footer(text="Challenge results don't affect the recipient's stats.")
-    return embed
-
-
-def get_daily_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title="🗓️ Vagudle Daily",
-        description=(
-            "Everyone gets the same word each day. Track your group's progress and build "
-            "a win streak together!\n\n"
-            "**[▶ Play today's Daily](https://vagudle.king-tajin.dev/daily)**"
-        ),
-        color=0x5000AA,
-    )
-    embed.set_footer(text="A new word drops every day.")
-    return embed
 
 
 def get_support_embed() -> discord.Embed:

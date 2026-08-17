@@ -7,12 +7,12 @@ import discord
 from discord import app_commands
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
 
-def setup(bot: TajinHelper) -> None:
+def setup(bot: VagudleBot) -> None:
     @bot.tree.command(
         name="vagudle_daily_channel",
         description="Set the channel where today's Vagudle Daily progress gets posted",

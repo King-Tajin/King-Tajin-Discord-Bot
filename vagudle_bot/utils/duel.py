@@ -5,7 +5,7 @@ from functools import cache
 from pathlib import Path
 from typing import Literal
 
-from bot.utils.encoding import generate_id, aes_gcm_encode
+from vagudle_bot.utils.encoding import generate_id, aes_gcm_encode
 
 DuelDifficulty = Literal["normal", "hard"]
 

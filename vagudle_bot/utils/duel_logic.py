@@ -10,13 +10,15 @@ import aiohttp
 import discord
 from aiohttp import web
 
-from bot.config import Config
-from bot.utils.cloudflare import D1_TABLE_LEADERBOARD_HARD, D1_TABLE_LEADERBOARD_NORMAL
-from bot.utils.daily_logic import register_daily_routes
-from bot.utils.order_webhook import register_order_routes
+from vagudle_bot.config import Config
+from vagudle_bot.utils.cloudflare import (
+    D1_TABLE_LEADERBOARD_HARD,
+    D1_TABLE_LEADERBOARD_NORMAL,
+)
+from vagudle_bot.utils.daily_logic import register_daily_routes
 
 if TYPE_CHECKING:
-    from bot.main import TajinHelper
+    from vagudle_bot.main import VagudleBot
 
 logger = logging.getLogger(__name__)
 
@@ -123,37 +125,13 @@ def build_expired_duel_embed(*, is_dnf: bool) -> discord.Embed:
     return embed
 
 
-async def send_dm_with_fallback(
-    bot: TajinHelper,
-    user_id: int,
-    embed: discord.Embed,
-) -> None:
-    if bot.dm_client is None:
-        logger.debug(
-            f"send_dm_with_fallback: dm_client not configured, using main bot for {user_id}"
-        )
-    else:
-        try:
-            result = await bot.dm_client.send_dm(user_id, embed=dict(embed.to_dict()))
-            if result.get("success"):
-                logger.info(f"send_dm_with_fallback: sent via vagudle bot to {user_id}")
-                return
-            logger.warning(
-                f"send_dm_with_fallback: vagudle bot returned non-success for {user_id} "
-                f"— error={result.get('error')!r}, falling back to main bot"
-            )
-        except Exception as e:
-            logger.warning(
-                f"send_dm_with_fallback: vagudle bot exception for {user_id} "
-                f"({type(e).__name__}: {e}) — falling back to main bot"
-            )
-
+async def send_dm(bot: VagudleBot, user_id: int, embed: discord.Embed) -> None:
     user = await bot.fetch_user(user_id)
     await user.send(embed=embed)
-    logger.info(f"send_dm_with_fallback: sent via main bot to {user_id}")
+    logger.info(f"send_dm: sent to {user_id}")
 
 
-async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
+async def check_duel_completion(bot: VagudleBot, duel_id: str) -> None:
     async with _get_duel_lock(duel_id):
         try:
             if duel_id in _processed_duels:
@@ -284,7 +262,7 @@ async def check_duel_completion(bot: TajinHelper, duel_id: str) -> None:
                     continue
 
                 try:
-                    await send_dm_with_fallback(bot, int(str(discord_id)), embed)
+                    await send_dm(bot, int(str(discord_id)), embed)
                     logger.info(
                         f"check_duel_completion: DMed result to user {discord_id}"
                     )
@@ -319,23 +297,22 @@ async def handle_duel_webhook(request: web.Request) -> web.Response:
     if not duel_id:
         return web.Response(status=400, text="Missing duel_id")
 
-    bot: TajinHelper = request.app["bot"]
+    bot: VagudleBot = request.app["bot"]
     asyncio.create_task(check_duel_completion(bot, duel_id))
 
     logger.info(f"handle_duel_webhook: queued completion check for duel {duel_id}")
     return web.Response(status=200)
 
 
-async def start_webhook_server(bot: TajinHelper) -> web.AppRunner:
+async def start_webhook_server(bot: VagudleBot) -> web.AppRunner:
     app = web.Application()
     app["bot"] = bot
     app.router.add_post("/webhook/duel", handle_duel_webhook)
-    register_order_routes(app)
     register_daily_routes(app)
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", Config.DUEL_WEBHOOK_PORT)
+    site = web.TCPSite(runner, "0.0.0.0", Config.WEBHOOK_PORT)
     await site.start()
-    logger.info(f"Webhook server listening on port {Config.DUEL_WEBHOOK_PORT}")
+    logger.info(f"Webhook server listening on port {Config.WEBHOOK_PORT}")
     return runner

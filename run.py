@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from bot.main import create_bot
-from bot.config import Config
+from tajin_helper_bot.main import create_bot
+from tajin_helper_bot.config import Config
 from vagudle_bot.main import start as start_vagudle_bot
 
 logging.basicConfig(level=logging.INFO)

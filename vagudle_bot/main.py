@@ -56,8 +56,10 @@ class VagudleBot(commands.Bot):
         cmd_duel.setup(self)
         cmd_leaderboard.setup(self)
 
-        await sync_preserving_entry_point(self)
-        logger.info("Synced slash commands globally")
+        try:
+            await sync_preserving_entry_point(self)
+        except discord.HTTPException as e:
+            logger.error(f"setup_hook: command sync failed, continuing without it: {e}")
 
         self.update_duel_stats.start()
         self.cleanup_stale_duels.start()

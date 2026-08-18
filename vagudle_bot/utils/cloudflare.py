@@ -1,10 +1,8 @@
+import aiohttp
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict
-
-import aiohttp
-
+from typing import Optional, List, Dict
 from vagudle_bot.config import Config
 
 logger = logging.getLogger(__name__)
@@ -133,6 +131,15 @@ class CloudflareKV:
                         f"KV store_daily_progress: status {response.status} for group '{group_id}' date '{date}'"
                     )
                 return ok
+
+    async def get_synced_commands_hash(self) -> Optional[str]:
+        data = await self.get_value("vagudle_synced_commands_hash")
+        return data.get("hash") if data else None
+
+    async def store_synced_commands_hash(self, hash_value: str) -> bool:
+        return await self.put_value(
+            "vagudle_synced_commands_hash", {"hash": hash_value}
+        )
 
 
 class CloudflareD1:

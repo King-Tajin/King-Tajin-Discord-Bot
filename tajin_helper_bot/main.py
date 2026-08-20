@@ -75,8 +75,12 @@ class TajinHelper(commands.Bot):
             for cmd in all_commands:
                 self.tree.add_command(cmd, guild=guild)
             await self.tree.sync(guild=guild)
+
+            self.tree.clear_commands(guild=None)
             await self.tree.sync()
-            logger.info("Synced slash commands to guild and globally")
+            logger.info(
+                "Synced slash commands to guild only, cleared any global commands"
+            )
         else:
             await self.tree.sync()
             logger.info("Synced slash commands globally")

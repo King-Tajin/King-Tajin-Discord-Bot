@@ -21,17 +21,13 @@ def _hash_payload(payload: list[dict]) -> str:
     return hashlib.sha256(serialized.encode()).hexdigest()
 
 
-async def _fetch_entry_point_command(bot: VagudleBot) -> dict | None:
+async def _fetch_existing_commands(bot: VagudleBot) -> list[dict]:
     route = Route(
         "GET",
         "/applications/{application_id}/commands",
         application_id=bot.application_id,
     )
-    existing = await bot.http.request(route)
-    return next(
-        (cmd for cmd in existing if cmd.get("type") == _ENTRY_POINT_COMMAND_TYPE),
-        None,
-    )
+    return await bot.http.request(route)
 
 
 async def sync_preserving_entry_point(
@@ -42,15 +38,29 @@ async def sync_preserving_entry_point(
     own_payload = [cmd.to_dict(bot.tree) for cmd in commands]
     own_hash = _hash_payload(own_payload)
 
+    existing = await _fetch_existing_commands(bot)
+    entry_point = next(
+        (cmd for cmd in existing if cmd.get("type") == _ENTRY_POINT_COMMAND_TYPE),
+        None,
+    )
+    existing_non_entry_point = [
+        cmd for cmd in existing if cmd.get("type") != _ENTRY_POINT_COMMAND_TYPE
+    ]
+    existing_names = {cmd.get("name") for cmd in existing_non_entry_point}
+    own_names = {cmd.get("name") for cmd in own_payload}
+
     last_synced_hash = await bot.kv.get_synced_commands_hash()
 
-    if last_synced_hash == own_hash:
+    if (
+        last_synced_hash == own_hash
+        and existing_names == own_names
+        and len(existing_non_entry_point) == len(own_payload)
+    ):
         logger.info(
-            "sync_preserving_entry_point: command definitions unchanged, skipping sync"
+            "sync_preserving_entry_point: command definitions unchanged and already "
+            "registered on Discord, skipping sync"
         )
         return None
-
-    entry_point = await _fetch_entry_point_command(bot)
 
     payload = list(own_payload)
     if entry_point:
